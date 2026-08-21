@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "FinPulse — The market, distilled",
-  description: "A free, open-source AI agent that turns portfolio news into one calm daily brief.",
+  title: "FinPulse — Personal Market Intelligence",
+  description: "A private AI-powered portfolio dashboard for live prices, news, risk and market intelligence.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
