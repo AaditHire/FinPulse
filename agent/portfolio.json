@@ -1,0 +1,5 @@
+{
+  "crypto": ["BTC", "ETH"],
+  "stocks": ["AAPL", "MSFT"],
+  "email_to": ""
+}

@@ -1,0 +1,51 @@
+name: FinPulse Daily Digest
+
+on:
+  schedule:
+    - cron: "0 8,18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finpulse-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Cache semantic model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: huggingface-all-minilm-l6-v2-v1
+      - name: Restore delivery history
+        uses: actions/cache/restore@v4
+        with:
+          path: data/finpulse.db
+          key: finpulse-db-${{ github.run_id }}
+          restore-keys: |
+            finpulse-db-
+      - run: pip install -r requirements.txt
+      - name: Send digest
+        run: python -m agent.main
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          CRYPTOPANIC_KEY: ${{ secrets.CRYPTOPANIC_KEY }}
+      - name: Save delivery history
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/finpulse.db
+          key: finpulse-db-${{ github.run_id }}

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <body style="margin:0;background:#07110f;color:#e9f5ef;font-family:Arial,sans-serif">
+    <div style="display:none;max-height:0;overflow:hidden">Your concise AI market brief for today.</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#07110f;padding:28px 12px">
+      <tr><td align="center">
+        <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="width:100%;max-width:640px;background:#0d1b17;border:1px solid #1d332c;border-radius:18px;overflow:hidden">
+          <tr><td style="padding:30px 32px;background:#10231d">
+            <div style="font-size:13px;letter-spacing:2px;color:#67e8ad;font-weight:bold">FINPULSE</div>
+            <h1 style="margin:10px 0 6px;font-size:30px;color:#fff">The market, distilled.</h1>
+            <p style="margin:0;color:#91a9a0;font-size:14px">{{ generated_at.strftime('%A, %B %d') }} · AI-ranked portfolio intelligence</p>
+          </td></tr>
+          {% if prices %}<tr><td style="padding:20px 32px;border-bottom:1px solid #1d332c">
+            <table role="presentation" width="100%"><tr>
+              {% for ticker, quote in prices.items() %}<td style="padding:6px 12px 6px 0">
+                <div style="font-size:12px;color:#91a9a0">{{ ticker }} / USD</div>
+                <div style="font-size:22px;font-weight:bold;color:#fff">${{ '{:,.2f}'.format(quote.price_usd) }}</div>
+                <div style="font-size:13px;color:{{ '#67e8ad' if quote.change_24h >= 0 else '#fb7185' }}">{{ '+' if quote.change_24h >= 0 else '' }}{{ '{:.2f}'.format(quote.change_24h) }}%</div>
+              </td>{% endfor %}
+            </tr></table>
+          </td></tr>{% endif %}
+          {% for item in summaries %}<tr><td style="padding:26px 32px;border-bottom:1px solid #1d332c">
+            <table role="presentation" width="100%"><tr>
+              <td><span style="font-size:21px;font-weight:bold;color:#fff">{{ item.ticker }}</span></td>
+              <td align="right"><span style="padding:5px 9px;border-radius:999px;background:#172b24;color:#9de7c4;font-size:11px;text-transform:uppercase">{{ item.sentiment }}</span></td>
+            </tr></table>
+            <p style="font-size:15px;line-height:1.65;color:#c8d8d1">{{ item.summary }}</p>
+            {% for article in articles_by_ticker.get(item.ticker, []) %}
+              <p style="margin:10px 0;font-size:13px;line-height:1.45"><a href="{{ article.url }}" style="color:#67e8ad;text-decoration:none">{{ article.title }}</a><br><span style="color:#688078">{{ article.source }}</span></p>
+            {% endfor %}
+          </td></tr>{% endfor %}
+          <tr><td style="padding:22px 32px;color:#688078;font-size:11px;line-height:1.5">Generated automatically from public sources. Informational only — not financial advice.</td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>
