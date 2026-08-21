@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 
 from agent.models import Article
+from agent.config import load_settings
+from agent.main import scheduled_delivery_due
 from agent.pipeline.dedupe import deduplicate
 from agent.pipeline.rank import rank_articles
 from agent.pipeline.summarize import summarize_articles
@@ -77,3 +79,16 @@ def test_summarizer_returns_one_json_record_per_asset(monkeypatch: object) -> No
         "test-key",
     )
     assert [(item.ticker, item.sentiment) for item in result] == [("BTC", "positive"), ("AAPL", "neutral")]
+
+
+def test_blank_database_path_uses_project_default(monkeypatch: object) -> None:
+    monkeypatch.setenv("DATABASE_PATH", "")  # type: ignore[attr-defined]
+    assert load_settings().database_path.name == "finpulse.db"
+
+
+def test_scheduled_delivery_window(monkeypatch: object) -> None:
+    monkeypatch.setenv("DIGEST_ACTIVE", "true")  # type: ignore[attr-defined]
+    monkeypatch.setenv("DIGEST_DELIVERY_TIME", "08:00")  # type: ignore[attr-defined]
+    monkeypatch.setenv("DIGEST_TIMEZONE", "UTC")  # type: ignore[attr-defined]
+    assert scheduled_delivery_due(datetime(2026, 8, 21, 8, 12, tzinfo=timezone.utc))
+    assert not scheduled_delivery_due(datetime(2026, 8, 21, 8, 45, tzinfo=timezone.utc))

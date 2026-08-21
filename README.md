@@ -5,38 +5,45 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-78f0b4.svg)](LICENSE)
 
-FinPulse is a free, open-source AI agent that watches BTC, ETH, and stock-news feeds, removes duplicate coverage, ranks what matters to a portfolio, and emails a polished HTML digest twice a day.
+FinPulse is a personal AI market-intelligence workspace. Its live dashboard values a mixed crypto/stock portfolio, renders 30-day performance, reads portfolio-specific news, and lets a Groq-powered agent reason across current prices and catalysts. A scheduled Python agent delivers the same intelligence as a configurable daily HTML email.
 
 It uses only public data and free-tier services: CoinGecko, RSS, Groq, GitHub Actions, Gmail SMTP, Vercel, and SQLite.
 
-**[View the live landing page](https://web-sand-pi-45.vercel.app)** · **[Run the digest workflow](https://github.com/AaditHire/FinPulse/actions/workflows/run-digest.yml)**
+> The current Vercel URL still serves the previous landing-page release. The dashboard overhaul is intentionally being reviewed locally before deployment.
+
+![FinPulse personal dashboard](docs/dashboard-light.png)
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[GitHub Actions<br/>08:00 & 18:00 UTC] --> B[Python / FastAPI agent]
-    C[CoinGecko prices] --> B
-    D[Crypto + stock RSS] --> B
-    B --> E[MiniLM semantic dedupe]
-    E --> F[Recency + ticker ranking]
-    F --> G[Groq / Llama 3.3 summaries]
-    G --> H[Jinja HTML email]
-    H --> I[Gmail SMTP]
-    I --> J[Your inbox]
-    B <--> K[(SQLite sent history)]
+    U[Personal dashboard] --> N[Next.js server tools]
+    N --> C[CoinGecko + Yahoo prices]
+    N --> R[CoinDesk + Cointelegraph + Google RSS]
+    N --> G[Groq production AI agent]
+    U <--> L[(Browser-local portfolio)]
+    A[GitHub Actions<br/>configured daily window] --> P[Python / FastAPI pipeline]
+    P --> G
+    P --> S[(SQLite sent history)]
+    P --> M[Gmail HTML digest]
 ```
 
 The workflow restores and saves the SQLite file through the GitHub Actions cache. Without that step, a fresh runner would forget previously delivered links on every run.
 
 ## What it does
 
-- Fetches BTC and ETH prices and 24-hour change from CoinGecko.
+- Values personal holdings from live market prices and renders both a portfolio graph and selectable 30-day graphs for every holding.
+- Adds and validates arbitrary Yahoo Finance stock tickers plus BTC, ETH, SOL, XRP, BNB, ADA, DOGE, AVAX, LINK, DOT, LTC, BCH, and SUI.
+- Saves holdings, quantities, and asset types privately in the browser for a personal, login-free workflow, including across refreshes.
+- Aggregates and searches up to 30 current stories from portfolio-specific feeds.
+- Runs a server-side, multi-step Groq analysis over the live prices and headlines. A key can come from the server environment or the dashboard's session-only connection form.
+- Fetches crypto through CoinGecko with Yahoo Finance fallback, and fetches stock quotes and history through Yahoo Finance.
 - Normalizes CoinDesk, Cointelegraph, Yahoo Finance, and Google News RSS items.
 - Removes semantic duplicates above `0.85` cosine similarity with `all-MiniLM-L6-v2`.
 - Ranks stories by freshness and direct asset mention, capped at five per ticker.
-- Asks Groq's `llama-3.3-70b-versatile` for grounded summaries and sentiment.
+- Uses an allowed Groq production model for grounded summaries and sentiment, preferring `openai/gpt-oss-120b` and avoiding retired model IDs.
 - Sends responsive, inline-CSS email through a Gmail app password.
+- Provides a dashboard schedule panel for recipient, delivery time, timezone, pause/resume, and one-click test emails.
 - Records URL hashes only after a successful send so failed deliveries can be retried.
 
 ## Local setup
@@ -86,20 +93,37 @@ Add these repository secrets in **Settings → Secrets and variables → Actions
 | `EMAIL_TO` | Yes | Digest recipient |
 | `CRYPTOPANIC_KEY` | No | Reserved optional news-source key |
 
-The included workflow runs at `08:00` and `18:00` UTC and can also be started manually. GitHub cron schedules always use UTC.
+The workflow checks twice an hour and the Python agent sends only inside the delivery window stored in `agent/digest_schedule.json`. The dashboard updates this file locally without writing the recipient or Gmail credentials into Git. The default is `08:00 Asia/Kolkata`; the workflow can also be started manually.
 
-## Landing page and Vercel
+## Personal dashboard
 
-The landing page lives in `web/`.
+The functional Next.js dashboard lives in `web/`. Copy its environment template before starting:
 
 ```bash
 cd web
 npm install
+cp .env.example .env.local
 npm run dev
 npm run build
 ```
 
-Import the repository in Vercel and set **Root Directory** to `web`. The GitHub button defaults to this repository; `NEXT_PUBLIC_GITHUB_URL` can override it for a fork. No server-side environment variables are needed.
+You can activate the interactive AI agent in either of two ways:
+
+- Paste a free Groq key into **Integrations → Groq API key**. It is kept only in that browser tab's session and cleared when the tab closes.
+- Set `GROQ_API_KEY` in `web/.env.local` for a persistent local server configuration.
+
+SMTP values remain optional unless email delivery is being tested. `.env.local` is ignored by Git.
+
+The **Digest schedule** card on the dashboard lets you:
+
+- choose the recipient email, local delivery time, and timezone;
+- pause or resume scheduled delivery;
+- save the schedule for the Python/GitHub Actions agent; and
+- send a fresh test digest without changing the sent-article history.
+
+Recipient details are stored under the ignored `data/` directory. The tracked schedule contains only time, timezone, and enabled state.
+
+For Vercel, set **Root Directory** to `web` and add the same server-side secrets in the Vercel project environment. No secret should use a `NEXT_PUBLIC_` prefix.
 
 ## Project layout
 
@@ -107,7 +131,8 @@ Import the repository in Vercel and set **Root Directory** to `web`. The GitHub 
 agent/                    Python agent, sources, pipeline, email, SQLite
 tests/test_pipeline.py    Fast deterministic pipeline tests
 .github/workflows/        Scheduled digest runner
-web/                      Next.js + Tailwind landing page
+web/                      Next.js dashboard, server tools, Groq agent route
+docs/                     Local dashboard review screenshots
 requirements.txt          Pinned Python dependencies
 .env.example              Local configuration template
 ```
