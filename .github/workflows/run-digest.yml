@@ -2,7 +2,8 @@ name: FinPulse Daily Digest
 
 on:
   schedule:
-    - cron: "0 8,18 * * *"
+    # Poll twice hourly; the agent sends only in the configured timezone window.
+    - cron: "0,30 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -36,7 +37,7 @@ jobs:
             finpulse-db-
       - run: pip install -r requirements.txt
       - name: Send digest
-        run: python -m agent.main
+        run: python -m agent.main --scheduled
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           SMTP_USER: ${{ secrets.SMTP_USER }}

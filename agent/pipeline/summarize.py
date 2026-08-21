@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import defaultdict
 from collections.abc import Sequence
 
@@ -9,7 +10,7 @@ import requests
 from agent.models import Article, AssetSummary
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-MODEL = "llama-3.3-70b-versatile"
+MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 SYSTEM_PROMPT = (
     "You are a careful financial analyst. Summarize the supplied headlines for the asset in 3-5 "
     "sentences and explicitly flag news that could move price. Do not invent facts. Return only "

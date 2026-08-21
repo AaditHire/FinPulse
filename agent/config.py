@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_PORTFOLIO_PATH = Path(__file__).with_name("portfolio.json")
+DEFAULT_DIGEST_SETTINGS_PATH = ROOT_DIR / "data" / "digest-settings.json"
 
 
 @dataclass(frozen=True)
@@ -57,11 +58,20 @@ def load_portfolio(path: Path = DEFAULT_PORTFOLIO_PATH) -> Portfolio:
 
 def load_settings(portfolio_path: Path = DEFAULT_PORTFOLIO_PATH) -> Settings:
     load_dotenv(ROOT_DIR / ".env")
+    database_path = os.getenv("DATABASE_PATH", "").strip()
+    portfolio = load_portfolio(portfolio_path)
+    try:
+        digest_settings = json.loads(DEFAULT_DIGEST_SETTINGS_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        digest_settings = {}
+    configured_recipient = str(digest_settings.get("recipient", "")).strip()
+    if configured_recipient:
+        portfolio = Portfolio(portfolio.crypto, portfolio.stocks, configured_recipient)
     return Settings(
-        portfolio=load_portfolio(portfolio_path),
+        portfolio=portfolio,
         groq_api_key=os.getenv("GROQ_API_KEY", "").strip(),
         smtp_user=os.getenv("SMTP_USER", "").strip(),
         smtp_pass=os.getenv("SMTP_PASS", "").strip(),
-        database_path=Path(os.getenv("DATABASE_PATH", ROOT_DIR / "data" / "finpulse.db")),
+        database_path=Path(database_path) if database_path else ROOT_DIR / "data" / "finpulse.db",
         crypto_panic_key=os.getenv("CRYPTOPANIC_KEY") or None,
     )
