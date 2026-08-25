@@ -2,7 +2,8 @@ import { XMLParser } from "fast-xml-parser";
 import "server-only";
 
 import { createHash } from "node:crypto";
-import type { DashboardPayload, MarketAsset, NewsItem } from "./types";
+import type { DashboardPayload, DataProvenance, MarketAsset, NewsItem, ProviderHealth } from "./types";
+import { assertAllowedProviderUrl } from "./providers/registry";
 
 const CRYPTO: Record<string, { id: string; name: string }> = {
   BTC: { id: "bitcoin", name: "Bitcoin" },
@@ -29,7 +30,7 @@ const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_
 
 export function sanitizeSymbols(value: unknown): string[] {
   const raw = Array.isArray(value) ? value : String(value ?? "").split(",");
-  return [...new Set(raw.map((item) => String(item).trim().toUpperCase()).filter((item) => /^[A-Z.]{1,8}$/.test(item)))].slice(0, 10);
+  return [...new Set(raw.map((item) => String(item).trim().toUpperCase()).filter((item) => /^[A-Z.]{1,8}$/.test(item)))].slice(0, 30);
 }
 
 type AssetRequest = { symbol: string; kind: "crypto" | "stock" };
@@ -48,10 +49,11 @@ export function parseAssetRequests(value: unknown): AssetRequest[] {
     if (!/^[A-Z.]{1,8}$/.test(symbol)) return [];
     return [{ symbol, kind: kindPart === "crypto" || (!kindPart && symbol in CRYPTO) ? "crypto" as const : "stock" as const }];
   });
-  return [...new Map(requests.map((item) => [`${item.kind}:${item.symbol}`, item])).values()].slice(0, 12);
+  return [...new Map(requests.map((item) => [`${item.kind}:${item.symbol}`, item])).values()].slice(0, 30);
 }
 
 async function fetchWithTimeout(url: string, timeoutMs = 10_000): Promise<Response> {
+  assertAllowedProviderUrl(url);
   const response = await fetch(url, {
     cache: "no-store",
     headers: { "User-Agent": "FinPulse/2.0 (personal market dashboard)" },
@@ -59,6 +61,10 @@ async function fetchWithTimeout(url: string, timeoutMs = 10_000): Promise<Respon
   });
   if (!response.ok) throw new Error(`${response.status} from ${new URL(url).hostname}`);
   return response;
+}
+
+function provenance(input: Omit<DataProvenance, "receivedAt">): DataProvenance {
+  return { ...input, receivedAt: new Date().toISOString() };
 }
 
 async function fetchCryptoAssets(symbols: string[]): Promise<MarketAsset[]> {
@@ -79,6 +85,15 @@ async function fetchCryptoAssets(symbols: string[]): Promise<MarketAsset[]> {
         price: Number(prices[config.id]?.usd ?? historyPayload.prices.at(-1)?.[1] ?? 0),
         change24h: Number(prices[config.id]?.usd_24h_change ?? 0),
         history: historyPayload.prices.map(([timestamp, value]) => ({ date: new Date(timestamp).toISOString(), value: Number(value) })),
+        provenance: provenance({
+          provider: "CoinGecko",
+          sourceUrl: pricesUrl.toString(),
+          asOf: new Date().toISOString(),
+          freshness: "best-effort",
+          exchangeCoverage: "CoinGecko aggregated crypto markets",
+          isDelayed: false,
+          disclaimer: "Aggregated public-market data; timing and venue coverage vary.",
+        }),
       };
     }));
   } catch {
@@ -89,7 +104,49 @@ async function fetchCryptoAssets(symbols: string[]): Promise<MarketAsset[]> {
   }
 }
 
-async function fetchStockAsset(symbol: string): Promise<MarketAsset> {
+async function fetchAlpacaStockAsset(symbol: string): Promise<MarketAsset> {
+  const apiKey = process.env.ALPACA_API_KEY?.trim();
+  const apiSecret = process.env.ALPACA_API_SECRET?.trim();
+  if (!apiKey || !apiSecret) throw new Error("Alpaca unconfigured");
+  const end = new Date();
+  const start = new Date(end.getTime() - 35 * 86_400_000);
+  const snapshotUrl = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol)}/snapshot?feed=iex`;
+  const barsUrl = new URL("https://data.alpaca.markets/v2/stocks/bars");
+  barsUrl.searchParams.set("symbols", symbol);
+  barsUrl.searchParams.set("timeframe", "1Day");
+  barsUrl.searchParams.set("start", start.toISOString());
+  barsUrl.searchParams.set("end", end.toISOString());
+  barsUrl.searchParams.set("feed", "iex");
+  const headers = { "APCA-API-KEY-ID": apiKey, "APCA-API-SECRET-KEY": apiSecret };
+  assertAllowedProviderUrl(snapshotUrl); assertAllowedProviderUrl(barsUrl);
+  const [snapshotResponse, barsResponse] = await Promise.all([
+    fetch(snapshotUrl, { headers, cache: "no-store", signal: AbortSignal.timeout(10_000) }),
+    fetch(barsUrl, { headers, cache: "no-store", signal: AbortSignal.timeout(10_000) }),
+  ]);
+  if (!snapshotResponse.ok || !barsResponse.ok) throw new Error(`Alpaca data failed (${snapshotResponse.status}/${barsResponse.status})`);
+  const snapshot = await snapshotResponse.json() as { latestTrade?: { p?: number; t?: string }; dailyBar?: { c?: number }; prevDailyBar?: { c?: number } };
+  const barsPayload = await barsResponse.json() as { bars?: Record<string, Array<{ t: string; c: number }>> };
+  const history = (barsPayload.bars?.[symbol] ?? []).map((bar) => ({ date: bar.t, value: Number(bar.c) }));
+  const price = Number(snapshot.latestTrade?.p ?? snapshot.dailyBar?.c ?? history.at(-1)?.value ?? 0);
+  const previous = Number(snapshot.prevDailyBar?.c ?? history.at(-2)?.value ?? price);
+  if (!price) throw new Error(`No Alpaca IEX quote for ${symbol}`);
+  return {
+    symbol, name: STOCK_NAMES[symbol] || symbol, kind: "stock", price,
+    change24h: previous ? ((price - previous) / previous) * 100 : 0,
+    history,
+    provenance: provenance({
+      provider: "Alpaca",
+      sourceUrl: snapshotUrl,
+      asOf: snapshot.latestTrade?.t ?? new Date().toISOString(),
+      freshness: "live",
+      exchangeCoverage: "IEX exchange only",
+      isDelayed: false,
+      disclaimer: "Live IEX single-exchange data may differ materially from consolidated brokerage quotes.",
+    }),
+  };
+}
+
+async function fetchYahooStockAsset(symbol: string): Promise<MarketAsset> {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1mo&interval=1d&includePrePost=false`;
   const payload = await (await fetchWithTimeout(url)).json() as {
     chart: { result: Array<{ timestamp: number[]; meta: { regularMarketPrice?: number; chartPreviousClose?: number; shortName?: string }; indicators: { quote: Array<{ close: Array<number | null> }> } }> | null; error: unknown };
@@ -109,7 +166,23 @@ async function fetchStockAsset(symbol: string): Promise<MarketAsset> {
     price,
     change24h: previous ? ((price - previous) / previous) * 100 : 0,
     history,
+    provenance: provenance({
+      provider: "Yahoo Finance",
+      sourceUrl: url,
+      asOf: history.at(-1)?.date ?? new Date().toISOString(),
+      freshness: "best-effort",
+      exchangeCoverage: "Unspecified consolidated source",
+      isDelayed: true,
+      disclaimer: "Best-effort unofficial data with no service-level guarantee.",
+    }),
   };
+}
+
+async function fetchStockAsset(symbol: string): Promise<MarketAsset> {
+  if (process.env.ALPACA_API_KEY && process.env.ALPACA_API_SECRET) {
+    try { return await fetchAlpacaStockAsset(symbol); } catch { /* Yahoo is the explicit fallback. */ }
+  }
+  return fetchYahooStockAsset(symbol);
 }
 
 function textValue(value: unknown): string {
@@ -187,6 +260,7 @@ async function fetchNews(requests: AssetRequest[]): Promise<{ news: NewsItem[]; 
 }
 
 export async function buildDashboardData(input: unknown): Promise<DashboardPayload> {
+  const startedAt = Date.now();
   const parsed = parseAssetRequests(input);
   const requested = parsed.length ? parsed : input == null ? [
     { symbol: "BTC", kind: "crypto" as const }, { symbol: "ETH", kind: "crypto" as const },
@@ -212,5 +286,10 @@ export async function buildDashboardData(input: unknown): Promise<DashboardPaylo
   });
   const newsResult = await fetchNews(requested);
   warnings.push(...newsResult.warnings);
-  return { assets, news: newsResult.news, generatedAt: new Date().toISOString(), warnings };
+  const providers = new Map<string, ProviderHealth>();
+  for (const asset of assets) providers.set(asset.provenance.provider, { provider: asset.provenance.provider, status: "healthy", latencyMs: Date.now() - startedAt, checkedAt: new Date().toISOString() });
+  if (!process.env.ALPACA_API_KEY || !process.env.ALPACA_API_SECRET) providers.set("Alpaca", { provider: "Alpaca", status: "unconfigured", checkedAt: new Date().toISOString(), message: "Optional; Yahoo best-effort fallback is active." });
+  if (warnings.length) providers.set("News feeds", { provider: "News feeds", status: "degraded", checkedAt: new Date().toISOString(), message: warnings.join("; ") });
+  else providers.set("News feeds", { provider: "News feeds", status: "healthy", latencyMs: Date.now() - startedAt, checkedAt: new Date().toISOString() });
+  return { assets, news: newsResult.news, generatedAt: new Date().toISOString(), warnings, providerHealth: [...providers.values()] };
 }

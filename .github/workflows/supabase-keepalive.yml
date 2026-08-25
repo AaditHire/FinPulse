@@ -1,0 +1,44 @@
+name: FinPulse Supabase Keep Alive
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finpulse-supabase-keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check authenticated database activity
+        id: check
+        continue-on-error: true
+        env:
+          APP_URL: ${{ secrets.FINPULSE_APP_URL }}
+          KEEPALIVE_SECRET: ${{ secrets.KEEPALIVE_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$APP_URL"
+          test -n "$KEEPALIVE_SECRET"
+          curl --fail-with-body --retry 2 --retry-delay 5 \
+            --header "Authorization: Bearer $KEEPALIVE_SECRET" \
+            "$APP_URL/api/internal/health/db"
+      - name: Send recovery email on failure
+        if: steps.check.outcome == 'failure'
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          KEEPALIVE_ERROR: "The daily GitHub Actions request to FinPulse /api/internal/health/db failed."
+        run: python -m agent.keepalive
+      - name: Fail workflow after notification
+        if: steps.check.outcome == 'failure'
+        run: exit 1

@@ -1,0 +1,35 @@
+name: FinPulse Terminal Ingestion
+
+on:
+  schedule:
+    - cron: "11 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finpulse-terminal-ingestion
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Ingest normalized market data and news
+        env:
+          APP_URL: ${{ secrets.FINPULSE_APP_URL }}
+          INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
+          WATCHLIST_JSON: ${{ vars.FINPULSE_WATCHLIST_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$APP_URL"
+          test -n "$INTERNAL_API_SECRET"
+          payload="${WATCHLIST_JSON:-[{\"symbol\":\"BTC\",\"kind\":\"crypto\"},{\"symbol\":\"AAPL\",\"kind\":\"stock\"}]}"
+          curl --fail-with-body --retry 2 --retry-delay 10 \
+            --request POST \
+            --header "Authorization: Bearer $INTERNAL_API_SECRET" \
+            --header "Content-Type: application/json" \
+            --data "{\"kind\":\"market\",\"assets\":$payload}" \
+            "$APP_URL/api/internal/ingest/run"
