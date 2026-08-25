@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildDashboardData } from "@/lib/market";
-import { modelLabel, selectGroqModel } from "@/lib/groq";
+import { runResearchAgent } from "@/lib/agents/runtime";
+import { requireOwner, authErrorResponse } from "@/lib/auth";
 import type { AgentAnalysis, Holding } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -11,52 +11,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ code: "GROQ_NOT_CONFIGURED", error: "Add GROQ_API_KEY to web/.env.local and restart the dashboard." }, { status: 503 });
   }
   try {
+    const principal = await requireOwner();
     const body = await request.json() as { holdings?: Holding[] };
-    const model = await selectGroqModel(apiKey);
     const holdings = (body.holdings ?? []).filter((item) => Number.isFinite(item.quantity) && item.quantity >= 0);
-    const dashboard = await buildDashboardData(holdings);
-    const context = {
-      portfolio: dashboard.assets.map((asset) => ({
-        symbol: asset.symbol,
-        price: asset.price,
-        change24h: Number(asset.change24h.toFixed(2)),
-        quantity: holdings.find((item) => item.symbol === asset.symbol)?.quantity ?? 0,
-      })),
-      headlines: dashboard.news.slice(0, 18).map((item) => ({ ticker: item.ticker, source: item.source, title: item.title, publishedAt: item.publishedAt })),
-      dataWarnings: dashboard.warnings,
-    };
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: "You are FinPulse, a cautious personal market-intelligence agent. Analyze only the supplied live prices and headlines. Identify portfolio-level risk, catalysts and actionable monitoring priorities, never trade instructions. Return valid JSON: {overview:string,riskLevel:'Low'|'Moderate'|'High',opportunity:string,confidence:number,actions:string[3],assetViews:[{symbol:string,outlook:'bullish'|'neutral'|'bearish',catalyst:string}]}. Confidence must be 0-100. Mention data limitations plainly.",
-          },
-          { role: "user", content: JSON.stringify(context) },
-        ],
-      }),
-      signal: AbortSignal.timeout(45_000),
-    });
-    if (!response.ok) {
-      const problem = await response.json().catch(() => null) as { error?: { message?: string } } | null;
-      throw new Error(problem?.error?.message ? `Groq: ${problem.error.message}` : `Groq request failed (${response.status}).`);
-    }
-    const payload = await response.json() as { choices: Array<{ message: { content: string } }> };
-    const parsed = JSON.parse(payload.choices[0].message.content) as Omit<AgentAnalysis, "analyzedAt" | "sourcesRead">;
+    const result = await runResearchAgent({ ownerId: principal.ownerId, query: "Summarize current portfolio risk, catalysts and monitoring priorities. Do not recommend trades.", holdings, apiKey });
     const analysis: AgentAnalysis = {
-      ...parsed,
-      confidence: Math.max(0, Math.min(100, Number(parsed.confidence) || 0)),
+      overview: result.answer,
+      riskLevel: result.status === "evidence_only" ? "Moderate" : "Low",
+      opportunity: result.citations[0]?.title ?? "Continue monitoring verified catalysts.",
+      confidence: result.confidence,
+      actions: ["Review cited evidence", "Monitor provider freshness", "Re-run after material market updates"],
+      assetViews: holdings.map((holding) => ({ symbol: holding.symbol, outlook: "neutral" as const, catalyst: "See cited research evidence and live data coverage." })),
       analyzedAt: new Date().toISOString(),
-      sourcesRead: dashboard.news.length,
-      model: modelLabel(model),
+      sourcesRead: result.citations.length,
+      model: result.model,
     };
-    return NextResponse.json({ analysis, warnings: dashboard.warnings });
+    return NextResponse.json({ analysis, citations: result.citations, warnings: result.limitation ? [result.limitation] : [] });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Agent run failed" }, { status: 502 });
+    return authErrorResponse(error);
   }
 }

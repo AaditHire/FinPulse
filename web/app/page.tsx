@@ -10,6 +10,7 @@ import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import type { AgentAnalysis, DashboardPayload, Holding, MarketAsset, NewsItem } from "@/lib/types";
+import { CommandPalette, TerminalWorkspace, type WorkspaceName } from "@/app/components/terminal-workspaces";
 
 const DEFAULT_HOLDINGS: Holding[] = [
   { symbol: "BTC", quantity: 0.08, kind: "crypto" },
@@ -81,10 +82,14 @@ export default function Dashboard() {
   const [agentPhase, setAgentPhase] = useState("");
   const [agentError, setAgentError] = useState("");
   const [greeting, setGreeting] = useState("Welcome back, Aadit.");
+  const [workspace, setWorkspace] = useState<WorkspaceName>("monitor");
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [portfolioConfigured, setPortfolioConfigured] = useState(false);
 
   const symbolsKey = holdings.map((item) => `${item.kind}:${item.symbol}`).sort().join(",");
 
   useEffect(() => {
+    let restoredHoldings = DEFAULT_HOLDINGS;
     const stored = window.localStorage.getItem("finpulse-holdings");
     if (stored) try {
       const parsed = JSON.parse(stored) as Array<Partial<Holding>>;
@@ -94,6 +99,7 @@ export default function Dashboard() {
         if (!/^[A-Z.]{1,8}$/.test(symbol) || !Number.isFinite(quantity) || quantity < 0) return [];
         return [{ symbol, quantity, kind: item.kind === "crypto" || (!item.kind && CRYPTO_SYMBOLS.includes(symbol)) ? "crypto" as const : "stock" as const }];
       });
+      restoredHoldings = restored;
       setHoldings(restored);
     } catch { /* Keep safe defaults. */ }
     const sessionKey = window.sessionStorage.getItem("finpulse-groq-key") ?? "";
@@ -101,11 +107,31 @@ export default function Dashboard() {
     setHoldingsReady(true);
     const hour = new Date().getHours();
     setGreeting(`${hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}, Aadit.`);
+    void fetch("/api/portfolio", { cache: "no-store" }).then(async (response) => {
+      if (!response.ok) return;
+      const payload = await response.json() as { configured?: boolean; holdings?: Holding[] };
+      setPortfolioConfigured(Boolean(payload.configured));
+      if (!payload.configured) return;
+      if (payload.holdings?.length) setHoldings(payload.holdings.map((item) => ({ symbol: item.symbol, quantity: item.quantity, kind: item.kind })));
+      else if (restoredHoldings.length) await fetch("/api/portfolio", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ holdings: restoredHoldings }) });
+    }).catch(() => undefined);
   }, []);
 
   useEffect(() => {
     if (holdingsReady) window.localStorage.setItem("finpulse-holdings", JSON.stringify(holdings));
-  }, [holdings, holdingsReady]);
+    if (!holdingsReady || !portfolioConfigured) return;
+    const timer = window.setTimeout(() => { void fetch("/api/portfolio", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ holdings }) }); }, 350);
+    return () => window.clearTimeout(timer);
+  }, [holdings, holdingsReady, portfolioConfigured]);
+
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setCommandOpen(true); }
+      if (event.key === "Escape") setCommandOpen(false);
+    };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, []);
 
   useEffect(() => {
     if (selectedSymbol !== "PORTFOLIO" && !holdings.some((item) => item.symbol === selectedSymbol)) setSelectedSymbol("PORTFOLIO");
@@ -212,35 +238,40 @@ export default function Dashboard() {
   }
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const openMonitorSection = (id: string) => { setWorkspace("monitor"); window.setTimeout(() => scrollTo(id), 0); };
 
   return (
     <main className="app-shell">
       <aside className="sidebar">
-        <div className="logo-mark" title="FinPulse"><ChartNoAxesCombined size={23} strokeWidth={2.3} /></div>
+        <div className="brand"><ChartNoAxesCombined size={25} strokeWidth={2.2} /><span>FinPulse</span></div>
         <nav aria-label="Dashboard navigation">
-          <button className="nav-icon active" aria-label="Overview" onClick={() => scrollTo("overview")}><LayoutDashboard size={19} /></button>
-          <button className="nav-icon" aria-label="Portfolio" onClick={() => setPortfolioOpen(true)}><WalletCards size={19} /></button>
-          <button className="nav-icon" aria-label="AI analyst" onClick={() => scrollTo("agent")}><Bot size={19} /></button>
-          <button className="nav-icon" aria-label="News" onClick={() => scrollTo("news")}><Newspaper size={19} /></button>
-          <button className="nav-icon" aria-label="Digest schedule" onClick={() => scrollTo("delivery")}><Mail size={19} /></button>
+          <button className={`nav-icon ${workspace === "monitor" ? "active" : ""}`} aria-label="Monitor" onClick={() => openMonitorSection("overview")}><LayoutDashboard size={19} /><span>Monitor</span></button>
+          <button className="nav-icon" aria-label="Portfolio" onClick={() => setPortfolioOpen(true)}><WalletCards size={19} /><span>Portfolio</span></button>
+          <button className={`nav-icon ${workspace === "research" ? "active" : ""}`} aria-label="Research" onClick={() => setWorkspace("research")}><Bot size={19} /><span>Research</span></button>
+          <button className={`nav-icon ${workspace === "macro" ? "active" : ""}`} aria-label="Macro" onClick={() => setWorkspace("macro")}><Activity size={19} /><span>Macro</span></button>
+          <button className={`nav-icon ${workspace === "alerts" ? "active" : ""}`} aria-label="Alerts" onClick={() => setWorkspace("alerts")}><Bell size={19} /><span>Alerts</span></button>
+          <button className={`nav-icon ${workspace === "health" ? "active" : ""}`} aria-label="Data Health" onClick={() => setWorkspace("health")}><CircleGauge size={19} /><span>Data Health</span></button>
+          <button className={`nav-icon ${workspace === "access" ? "active" : ""}`} aria-label="MCP Access" onClick={() => setWorkspace("access")}><Settings2 size={19} /><span>MCP Access</span></button>
           <span className="nav-rule" />
-          <button className="nav-icon" aria-label="Refresh activity" onClick={() => void loadDashboard()}><Activity size={19} /></button>
-          <button className="nav-icon" aria-label="Settings" onClick={() => setSettingsOpen(true)}><Settings2 size={19} /></button>
+          <button className="nav-icon" aria-label="News" onClick={() => openMonitorSection("news")}><Newspaper size={19} /><span>News</span></button>
+          <button className="nav-icon" aria-label="Digest schedule" onClick={() => openMonitorSection("delivery")}><Mail size={19} /><span>Digest</span></button>
+          <button className="nav-icon" aria-label="Settings" onClick={() => setSettingsOpen(true)}><Settings2 size={19} /><span>Settings</span></button>
         </nav>
-        <div className="user-avatar">AH</div>
+        <button className="rail-collapse" aria-label="Collapse navigation"><ChevronRight size={17}/></button>
       </aside>
 
       <section className="workspace" id="overview">
         <header className="topbar">
-          <div><p className="kicker">PERSONAL MARKET INTELLIGENCE</p><h1>{greeting}</h1></div>
+          <h1>{greeting}</h1>
           <div className="top-actions">
-            <label className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search portfolio and news" placeholder="Search your intelligence" /></label>
+            <button className="command-trigger" onClick={() => setCommandOpen(true)}><Search size={16}/><span>Jump to workspace</span><kbd>⌘ K</kbd></button>
+            {workspace === "monitor" ? <label className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search portfolio and news" placeholder="Search intelligence" /></label> : null}
             <button className="icon-button" aria-label="Integration status" onClick={() => setSettingsOpen(true)}><Bell size={18} />{dashboard?.warnings.length ? <span /> : null}</button>
             <button className="primary-button" onClick={() => void runAgent()} disabled={Boolean(agentPhase)}>{agentPhase ? <LoaderCircle className="spin" size={16}/> : <Sparkles size={16}/>} {agentPhase || "Run AI analysis"}</button>
           </div>
         </header>
 
-        <div className="status-row">
+        {workspace === "monitor" ? <><div className="status-row">
           <span className={error ? "live-pill offline" : "live-pill"}><i /> {error ? "Data connection interrupted" : loading ? "Refreshing market tools" : "Market data live"}</span>
           <span>{dashboard ? `Updated ${relativeTime(dashboard.generatedAt)} ago` : "Connecting…"}</span>
           {dashboard?.warnings.length ? <button className="warning-button" onClick={() => setSettingsOpen(true)}><AlertCircle size={13}/>{dashboard.warnings.length} source warning{dashboard.warnings.length > 1 ? "s" : ""}</button> : null}
@@ -256,19 +287,20 @@ export default function Dashboard() {
               <span className={`gain-badge ${(selectedAsset?.change24h ?? dailyPercent) < 0 ? "loss" : ""}`}>{selectedAsset ? signedPercent(selectedAsset.change24h) : <>{dailyMove >= 0 ? "+" : ""}{money(dailyMove)} <small>{signedPercent(dailyPercent)}</small></>}</span>
             </div>
             <div className="chart-switcher" aria-label="Choose graph"><button className={selectedSymbol === "PORTFOLIO" ? "active" : ""} onClick={() => setSelectedSymbol("PORTFOLIO")}>Portfolio</button>{assets.map((asset) => <button key={asset.symbol} className={selectedSymbol === asset.symbol ? "active" : ""} onClick={() => setSelectedSymbol(asset.symbol)}>{asset.symbol}</button>)}</div>
-            <div className="range-tabs"><span>{selectedAsset ? `${selectedAsset.symbol} price history` : "Portfolio performance"}</span><button className="active">1M</button></div>
+            <div className="range-tabs"><span>{selectedAsset ? `${selectedAsset.symbol} price history · ${selectedAsset.provenance.provider} · ${selectedAsset.provenance.exchangeCoverage}` : "Portfolio performance · normalized provider data"}</span><button className="active">1M</button></div>
             <div className="main-chart">
               {series.length ? <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 720, height: 245 }}>
                 <AreaChart data={series} margin={{ top: 12, right: 4, left: 0, bottom: 0 }}>
-                  <defs><linearGradient id="portfolioFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#6842d7" stopOpacity={0.3}/><stop offset="100%" stopColor="#6842d7" stopOpacity={0}/></linearGradient></defs>
-                  <CartesianGrid vertical={false} stroke="rgba(70,48,120,.1)" />
-                  <XAxis dataKey="day" axisLine={false} tickLine={false} minTickGap={35} tick={{ fill: "#746e82", fontSize: 10 }} dy={10} />
+                  <CartesianGrid vertical={false} stroke="#dbe2ee" strokeDasharray="3 3" />
+                  <XAxis dataKey="day" axisLine={false} tickLine={false} minTickGap={35} tick={{ fill: "#5c6981", fontSize: 10 }} dy={10} />
                   <YAxis hide domain={["dataMin - 100", "dataMax + 100"]} />
-                  <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #ded9eb", borderRadius: 12, boxShadow: "0 12px 32px rgba(70,50,105,.12)", color: "#201a2c" }} labelStyle={{ color: "#746e82" }} formatter={(value) => [money(Number(value)), selectedAsset?.symbol ?? "Portfolio"]} />
-                  <Area isAnimationActive={false} type="monotone" dataKey="value" stroke="#633bd1" strokeWidth={2.5} fill="url(#portfolioFill)" />
+                  <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #cfd8e7", borderRadius: 2, boxShadow: "0 10px 30px rgba(20,45,90,.10)", color: "#071633" }} labelStyle={{ color: "#5c6981" }} formatter={(value) => [money(Number(value)), selectedAsset?.symbol ?? "Portfolio"]} />
+                  <Area isAnimationActive={false} type="monotone" dataKey="value" stroke="#075cff" strokeWidth={2.4} fill="#dbe7ff" fillOpacity={0.72} />
                 </AreaChart>
               </ResponsiveContainer> : <EmptyChart loading={loading} />}
             </div>
+            <span className="allocation-label">ALLOCATION</span>
+            <div className="allocation-bar" aria-label={`Allocation: ${cryptoShare}% crypto and ${100 - cryptoShare}% stocks`}><span style={{ width: `${cryptoShare}%` }}/><i style={{ width: `${100 - cryptoShare}%` }}/></div>
             <div className="portfolio-footer"><span><i className="violet-dot" />Crypto <b>{cryptoShare}%</b></span><span><i className="coral-dot" />Stocks <b>{100 - cryptoShare}%</b></span><button onClick={() => setPortfolioOpen(true)}><Plus size={15}/> Manage assets</button></div>
           </article>
 
@@ -288,6 +320,7 @@ export default function Dashboard() {
               {analysis ? <>
                 <p className="ai-summary">{analysis.overview}</p>
                 <div className="insight-row"><span><CircleGauge size={15}/> Risk <b>{analysis.riskLevel}</b></span><span><Sparkles size={15}/> Opportunity <b>{analysis.opportunity}</b></span><span><Check size={15}/> Confidence <b>{analysis.confidence}%</b></span></div>
+                {analysis.assetViews?.length ? <div className="asset-outlook"><p>ASSET OUTLOOK</p>{analysis.assetViews.map((view) => <div key={view.symbol}><b>{view.symbol}</b><span className={view.outlook}>{view.outlook}</span><em>{view.catalyst}</em></div>)}</div> : null}
                 <div className="agent-actions">{analysis.actions?.map((action, index) => <span key={action}><b>0{index + 1}</b>{action}</span>)}</div>
               </> : <>
                 <p className="ai-summary">{integrations.groq ? "Run the agent to gather fresh prices, read the latest portfolio headlines, and reason across risks and catalysts. Every conclusion is grounded in the live sources shown below." : "The market and news tools are live. Connect a free Groq key in Integrations to activate multi-step portfolio reasoning; the key is kept only for this browser tab."}</p>
@@ -298,18 +331,29 @@ export default function Dashboard() {
             <button className="agent-button" onClick={() => void runAgent()} disabled={Boolean(agentPhase)}>{integrations.groq ? "Run agent" : "Connect Groq"} <ChevronRight size={16}/></button>
           </article>
 
-          <DigestSchedulePanel emailConnected={integrations.email} />
+          <div className="lower-grid">
+            <article className="news-panel glass-card" id="news">
+              <div className="section-title"><div><p>LIVE RSS INTELLIGENCE · {visibleNews.length} STORIES</p><h3>News intelligence</h3></div><div className="feed-tabs"><button className={feedFilter === "all" ? "active" : ""} onClick={() => setFeedFilter("all")}>All</button><button className={feedFilter === "crypto" ? "active" : ""} onClick={() => setFeedFilter("crypto")}>Crypto</button><button className={feedFilter === "stock" ? "active" : ""} onClick={() => setFeedFilter("stock")}>Stocks</button></div></div>
+              <div className="news-list">{visibleNews.slice(0, 6).map((item) => <NewsCard item={item} key={item.id} />)}</div>
+              {!visibleNews.length ? <div className="list-empty">{loading ? "Reading portfolio feeds…" : "No stories match this view."}</div> : null}
+            </article>
+            <DigestSchedulePanel emailConnected={integrations.email} />
+          </div>
 
-          <article className="news-panel glass-card" id="news">
-            <div className="section-title"><div><p>LIVE RSS INTELLIGENCE · {visibleNews.length} STORIES</p><h3>Portfolio news</h3></div><div className="feed-tabs"><button className={feedFilter === "all" ? "active" : ""} onClick={() => setFeedFilter("all")}>All</button><button className={feedFilter === "crypto" ? "active" : ""} onClick={() => setFeedFilter("crypto")}>Crypto</button><button className={feedFilter === "stock" ? "active" : ""} onClick={() => setFeedFilter("stock")}>Stocks</button></div></div>
-            <div className="news-list">{visibleNews.slice(0, 9).map((item) => <NewsCard item={item} key={item.id} />)}</div>
-            {!visibleNews.length ? <div className="list-empty">{loading ? "Reading portfolio feeds…" : "No stories match this view."}</div> : null}
-          </article>
-        </section>
+          <button className="integration-strip" onClick={() => setSettingsOpen(true)}>
+            <span><CircleGauge size={18}/><b>Integrations</b></span>
+            <span><i className={integrations.marketData ? "ready" : ""}/>Market prices</span>
+            <span><i className={integrations.newsFeeds ? "ready" : ""}/>Portfolio news</span>
+            <span><i className={integrations.groq ? "ready" : ""}/>Groq reasoning</span>
+            <span><i className={integrations.email ? "ready" : ""}/>Email delivery</span>
+            <ChevronRight size={18}/>
+          </button>
+        </section></> : <TerminalWorkspace workspace={workspace} holdings={holdings} groqKey={groqKey} navigate={setWorkspace}/>}
       </section>
 
       {portfolioOpen ? <PortfolioModal holdings={holdings} setHoldings={setHoldings} symbol={draftSymbol} quantity={draftQuantity} kind={draftKind} setKind={setDraftKind} setSymbol={setDraftSymbol} setQuantity={setDraftQuantity} add={addHolding} addError={addError} adding={addingHolding} close={() => setPortfolioOpen(false)} /> : null}
       {settingsOpen ? <SettingsModal integrations={integrations} warnings={dashboard?.warnings ?? []} connectGroq={connectGroq} disconnectGroq={disconnectGroq} hasSessionKey={Boolean(groqKey)} close={() => setSettingsOpen(false)} /> : null}
+      <CommandPalette open={commandOpen} close={() => setCommandOpen(false)} navigate={setWorkspace}/>
     </main>
   );
 }
@@ -380,7 +424,7 @@ function DigestSchedulePanel({ emailConnected }: { emailConnected: boolean }) {
 function AssetRow({ asset, tone, selected, onSelect }: { asset: MarketAsset; tone: string; selected: boolean; onSelect: () => void }) {
   return <button className={`asset-row ${selected ? "selected" : ""}`} onClick={onSelect} aria-label={`Show ${asset.symbol} graph`}>
     <span className={`asset-icon ${tone}`}>{asset.symbol.slice(0, 1)}</span>
-    <span className="asset-name"><b>{asset.symbol}</b><small>{asset.name}</small></span>
+    <span className="asset-name"><b>{asset.symbol}</b><small title={`${asset.provenance.provider}: ${asset.provenance.disclaimer}`}>{asset.name} · {asset.provenance.provider}</small></span>
     <span className="mini-chart"><ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 78, height: 28 }}><AreaChart data={asset.history.slice(-12)}><Area isAnimationActive={false} type="monotone" dataKey="value" stroke={asset.change24h >= 0 ? "#159965" : "#d94d59"} strokeWidth={1.6} fill="transparent" /></AreaChart></ResponsiveContainer></span>
     <span className="asset-price"><b>{money(asset.price)}</b><small className={asset.change24h >= 0 ? "positive" : "negative"}>{signedPercent(asset.change24h)}</small></span>
   </button>;
@@ -404,7 +448,7 @@ function PortfolioModal({ holdings, setHoldings, symbol, quantity, kind, setKind
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
     <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="portfolio-title">
       <div className="modal-head"><div><p>PERSONAL SETTINGS</p><h2 id="portfolio-title">Manage portfolio</h2></div><button aria-label="Close" onClick={close}><X size={18}/></button></div>
-      <p className="modal-copy">Your holdings stay in this browser. Symbols are sent only to the live market and news tools.</p>
+      <p className="modal-copy">When Supabase is configured, holdings sync to your owner-only account under RLS. Local mode keeps the same browser fallback.</p>
       <div className="add-row asset-add-row"><label>Asset type<select value={kind} onChange={(event) => { setKind(event.target.value as "stock" | "crypto"); setSymbol(""); }}><option value="stock">Stock</option><option value="crypto">Crypto</option></select></label><label>Symbol<input value={symbol} onChange={(event) => setSymbol(event.target.value.toUpperCase())} placeholder={kind === "crypto" ? "SOL" : "NVDA"} list={kind === "crypto" ? "crypto-symbols" : undefined} maxLength={8}/>{kind === "crypto" ? <datalist id="crypto-symbols">{CRYPTO_SYMBOLS.map((item) => <option value={item} key={item}/>)}</datalist> : null}</label><label>Quantity<input value={quantity} onChange={(event) => setQuantity(event.target.value)} type="number" min="0" step="any"/></label><button onClick={() => void add()} disabled={adding}>{adding ? <LoaderCircle className="spin" size={16}/> : <Plus size={16}/>} {adding ? "Checking" : "Add"}</button></div>
       {addError ? <p className="form-error"><AlertCircle size={13}/>{addError}</p> : null}
       <div className="holding-list">{holdings.map((holding) => <div key={holding.symbol}><span className="holding-symbol">{holding.symbol.slice(0,1)}</span><span className="holding-name"><b>{holding.symbol}</b><small>{holding.kind}</small></span><label>Quantity<input value={holding.quantity} onChange={(event) => setHoldings((current) => current.map((item) => item.symbol === holding.symbol ? { ...item, quantity: Math.max(0, Number(event.target.value)) } : item))} type="number" min="0" step="any"/></label><button aria-label={`Remove ${holding.symbol}`} onClick={() => setHoldings((current) => current.filter((item) => item.symbol !== holding.symbol))}><Trash2 size={16}/></button></div>)}</div>

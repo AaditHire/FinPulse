@@ -1,0 +1,30 @@
+name: FinPulse TypeScript Digest
+
+on:
+  schedule:
+    - cron: "0,30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finpulse-typescript-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    if: vars.ENABLE_TS_DIGEST_SCHEDULER == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Claim the approved delivery window
+        env:
+          APP_URL: ${{ secrets.FINPULSE_APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --retry 1 \
+            --request POST \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/internal/digest/run"
