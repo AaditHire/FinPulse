@@ -70,9 +70,27 @@ describe("Streamable HTTP protocol", () => {
     const result = await rpc(response);
     expect(result.result.tools.map((tool: { name: string }) => tool.name)).toEqual(["portfolio_get_holdings", "portfolio_risk"]);
   });
+  it("accepts normal MCP clients when a proxy rewrites the Host header", async () => {
+    const req = request("tools/list");
+    req.headers.set("host", "public.example");
+    expect((await POST(req)).status).toBe(200);
+  });
+  it("accepts same-origin browser requests through a forwarding proxy", async () => {
+    const req = request("tools/list");
+    req.headers.set("host", "internal.example");
+    req.headers.set("x-forwarded-host", "finpulse.example");
+    req.headers.set("x-forwarded-proto", "https");
+    req.headers.set("origin", "https://finpulse.example");
+    expect((await POST(req)).status).toBe(200);
+  });
   it("rejects disallowed origins before authenticating", async () => {
     const req = request("tools/list");
     req.headers.set("origin", "https://attacker.example");
+    expect((await POST(req)).status).toBe(403);
+  });
+  it("rejects malformed origins as a client error", async () => {
+    const req = request("tools/list");
+    req.headers.set("origin", "not-an-origin");
     expect((await POST(req)).status).toBe(403);
   });
 });

@@ -63,26 +63,26 @@ export function McpAccess() {
     {error ? <div className="terminal-notice error" role="alert">{error}</div> : null}
     <div className="terminal-columns access-layout">
       <article className="terminal-card"><div className="terminal-card-head"><span>Create API key</span><b>OWNER ACCESS</b></div>
-        <form className="alert-form" onSubmit={e => { e.preventDefault(); void create(); }}>
-          <label>Key name<input required minLength={2} maxLength={80} value={name} onChange={e => setName(e.target.value)} /></label>
-          <label>Expires in<select value={days} onChange={e => setDays(Number(e.target.value))}><option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option><option value={365}>1 year</option></select></label>
-          <fieldset><legend>Permissions</legend>{permissions.map(([scope, description]) => <label key={scope} style={{ display: "flex", alignItems: "center", gap: 10, margin: "12px 0" }}><input type="checkbox" style={{ width: "auto" }} checked={scopes.includes(scope)} onChange={e => setScopes(current => e.target.checked ? [...current, scope] : current.filter(s => s !== scope))} /><span>{description}</span></label>)}</fieldset>
-          <button className="terminal-primary" disabled={busy || loading || !scopes.length || name.trim().length < 2 || Boolean(token)}>{busy ? "Working…" : "Generate API key"}</button>
+        <form className="access-form" onSubmit={e => { e.preventDefault(); void create(); }}>
+          <div className="access-fields">
+            <label>Key name<input required minLength={2} maxLength={80} value={name} onChange={e => setName(e.target.value)} /></label>
+            <label>Expires in<select value={days} onChange={e => setDays(Number(e.target.value))}><option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option><option value={365}>1 year</option></select></label>
+          </div>
+          <fieldset className="access-permissions"><legend>Permissions</legend><div className="permission-list">{permissions.map(([scope, description]) => <label className="permission-option" key={scope}><input type="checkbox" checked={scopes.includes(scope)} onChange={e => setScopes(current => e.target.checked ? [...current, scope] : current.filter(s => s !== scope))} /><span><b>{description}</b><small>{scope}</small></span></label>)}</div></fieldset>
+          <div className="access-actions"><span>{loading ? "Checking your existing keys…" : `${scopes.length} permission${scopes.length === 1 ? "" : "s"} selected`}</span><button className="terminal-primary" disabled={busy || loading || !scopes.length || name.trim().length < 2 || Boolean(token)}>{busy ? "Working…" : "Generate API key"}</button></div>
         </form>
       </article>
-      <article className="terminal-card"><div className="terminal-card-head"><span>Connect your client</span><b>STREAMABLE HTTP</b></div><div className="alert-form">
-        <p>Use this server URL and set the Authorization header to Bearer followed by your generated key.</p>
-        <code className="endpoint-code">{endpoint}</code><button onClick={() => void copy(endpoint, "URL")}>{copied === "URL" ? "Copied URL" : "Copy server URL"}</button>
-        <p>Client configuration example (replace the placeholder with your key):</p>
-        <pre style={{ overflowX: "auto", maxWidth: "100%", fontSize: 12 }}>{configuration}</pre>
-        <button onClick={() => void copy(configuration, "config")}>{copied === "config" ? "Copied configuration" : "Copy configuration"}</button>
-        <p>Clients that require OAuth-only connections cannot use this API-key connection.</p>
+      <article className="terminal-card"><div className="terminal-card-head"><span>Connect your client</span><b>STREAMABLE HTTP</b></div><div className="access-client">
+        <p className="access-intro">Use this server URL and set the Authorization header to <code>Bearer</code> followed by your generated key.</p>
+        <div className="access-copy-block"><span>Server URL</span><code className="endpoint-code">{endpoint}</code><button type="button" onClick={() => void copy(endpoint, "URL")}>{copied === "URL" ? "Copied URL" : "Copy server URL"}</button></div>
+        <div className="access-copy-block configuration-block"><span>Client configuration</span><pre className="access-code">{configuration}</pre><button type="button" onClick={() => void copy(configuration, "config")}>{copied === "config" ? "Copied configuration" : "Copy configuration"}</button></div>
+        <p className="access-note">Replace the placeholder with your key. Clients that require OAuth-only connections cannot use this API-key connection.</p>
       </div></article>
     </div>
     {token ? <div className="token-reveal" role="status"><b>Your API key is ready. Copy it now; it is shown only once.</b><code style={{ overflowWrap: "anywhere" }}>{token}</code><button onClick={() => void copy(token, "key")}>{copied === "key" ? "Copied API key" : "Copy API key"}</button><button onClick={() => { setToken(""); setCopied(""); }}>Done — hide key</button></div> : null}
     <article className="terminal-card"><div className="terminal-card-head"><span>Your API keys</span><b>{keys.filter(active).length} ACTIVE</b></div>
-      <div className="token-list">{keys.map(key => <div key={key.id} className={active(key) ? "" : "revoked"}><p><b>{key.name}</b><small>{key.token_prefix}… · expires {new Date(key.expires_at).toLocaleDateString()} · {key.last_used_at ? "last used " + new Date(key.last_used_at).toLocaleString() : "never used"}</small></p><span>{key.scopes.join(" · ")}</span>{active(key) ? <button disabled={busy} onClick={() => void revoke(key.id)}>Revoke</button> : <em>{key.revoked_at ? "Revoked" : "Expired"}</em>}</div>)}
-        {!keys.length ? <div className="workspace-empty">{loading ? "Loading API keys…" : "No API keys yet. Create your first key above."}</div> : null}
+      <div className="token-list">{keys.map(key => <div key={key.id} className={`token-row ${active(key) ? "" : "revoked"}`}><p><b>{key.name}</b><small>{key.token_prefix}… · expires {new Date(key.expires_at).toLocaleDateString()} · {key.last_used_at ? "last used " + new Date(key.last_used_at).toLocaleString() : "never used"}</small></p><span>{key.scopes.join(" · ")}</span>{active(key) ? <button disabled={busy} onClick={() => void revoke(key.id)}>Revoke</button> : <em>{key.revoked_at ? "Revoked" : "Expired"}</em>}</div>)}
+        {!keys.length ? <div className="workspace-empty token-empty">{loading ? "Loading API keys…" : "No API keys yet. Create your first key above."}</div> : null}
       </div>
     </article>
   </>;

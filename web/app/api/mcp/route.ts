@@ -7,11 +7,18 @@ export const maxDuration = 60;
 
 function validateRequestOrigin(request: Request) {
   const requestUrl = new URL(request.url);
-  const host = request.headers.get("host");
-  if (host && host !== requestUrl.host) throw new AuthError("Invalid Host header.", 403);
   const origin = request.headers.get("origin");
-  const allowed = new Set([requestUrl.origin, ...(process.env.MCP_ALLOWED_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean)]);
-  if (origin && !allowed.has(origin)) throw new AuthError("Origin is not allowed.", 403);
+  if (!origin) return;
+
+  const normalizeOrigin = (value: string, status = 500) => {
+    try { return new URL(value).origin; }
+    catch { throw new AuthError(status === 403 ? "Origin is not allowed." : "Invalid origin configuration.", status); }
+  };
+  const allowed = new Set([
+    requestUrl.origin,
+    ...(process.env.MCP_ALLOWED_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean).map(normalizeOrigin),
+  ]);
+  if (!allowed.has(normalizeOrigin(origin, 403))) throw new AuthError("Origin is not allowed.", 403);
 }
 
 async function handle(request: Request) {
