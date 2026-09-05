@@ -16,7 +16,8 @@ export async function GET() {
       supabase!.from("llm_quota_windows").select("provider,model_id,workload,limit_type,window_start,used").eq("owner_id", principal.ownerId).gte("window_start", new Date(Date.now() - 86_400_000).toISOString()),
       supabase!.from("keepalive_events").select("source,checked_at").eq("owner_id", principal.ownerId).order("checked_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
-    if (database.error) throw database.error;
+    const failed = [database, providers, policies, windows, keepalive].find(result => result.error);
+    if (failed?.error) throw failed.error;
     return Response.json({ configured: true, database: database.data, providers: providers.data ?? [], policies: policies.data ?? [], quotas: windows.data ?? [], keepalive: keepalive.data ?? null });
   } catch (error) { return authErrorResponse(error); }
 }

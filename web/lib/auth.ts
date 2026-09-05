@@ -44,13 +44,25 @@ export async function requireOwner(): Promise<AuthPrincipal> {
 
 export async function authenticateRequest(request: Request, requiredScopes: string[] = []): Promise<AuthPrincipal> {
   const authorization = request.headers.get("authorization");
-  if (!authorization?.startsWith("Bearer fp_")) {
+  if (!authorization) {
     const principal = await requireOwner();
     for (const scope of requiredScopes) if (!principal.scopes.has(scope)) throw new AuthError(`Missing scope: ${scope}`, 403);
     return principal;
   }
 
-  const token = authorization.slice("Bearer ".length).trim();
+  const match = /^Bearer\s+(\S+)$/i.exec(authorization);
+  if (!match) throw new AuthError("Use Authorization: Bearer <API key>.");
+  const token = match[1];
+  if (!token.startsWith("fp_")) {
+    const supabase = await createSupabaseServerClient();
+    if (!supabase) throw new AuthError("Supabase authentication is required.", 503);
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data.user) throw new AuthError("Invalid bearer token.");
+    assertOwnerEmail(data.user.email);
+    const scopes = new Set(["market:read", "research:read", "portfolio:read", "alerts:write"]);
+    for (const scope of requiredScopes) if (!scopes.has(scope)) throw new AuthError(`Missing scope: ${scope}`, 403);
+    return { ownerId: data.user.id, email: data.user.email, scopes, kind: "session" };
+  }
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const admin = createSupabaseAdminClient();
   if (!admin) throw new AuthError("Personal access tokens require Supabase.", 503);
@@ -60,7 +72,7 @@ export async function authenticateRequest(request: Request, requiredScopes: stri
   }
   const scopes = new Set<string>(data.scopes ?? []);
   for (const scope of requiredScopes) if (!scopes.has(scope)) throw new AuthError(`Missing scope: ${scope}`, 403);
-  void admin.from("mcp_tokens").update({ last_used_at: new Date().toISOString() }).eq("id", data.id);
+  await admin.from("mcp_tokens").update({ last_used_at: new Date().toISOString() }).eq("id", data.id);
   return { ownerId: data.owner_id, scopes, kind: "pat" };
 }
 

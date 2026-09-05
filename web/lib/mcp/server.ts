@@ -53,7 +53,7 @@ export function createFinPulseMcpServer(principal: AuthPrincipal) {
     });
     server.registerTool("portfolio_risk", { description: "Calculate deterministic allocation concentration and daily portfolio movement from supplied holdings.", inputSchema: z.object({ holdings: z.array(z.object({ symbol: z.string(), quantity: z.number().min(0), kind: z.enum(["stock", "crypto"]) })).min(1).max(30) }) }, async ({ holdings }) => {
       const dashboard = await buildDashboardData(holdings.map((item) => `${item.kind}:${item.symbol}`).join(","));
-      const values = dashboard.assets.map((asset) => ({ symbol: asset.symbol, value: asset.price * (holdings.find((holding) => holding.symbol === asset.symbol)?.quantity ?? 0), change24h: asset.change24h }));
+      const values = dashboard.assets.map((asset) => ({ symbol: asset.symbol, value: asset.price * holdings.filter((holding) => holding.symbol === asset.symbol && holding.kind === asset.kind).reduce((sum, holding) => sum + holding.quantity, 0), change24h: asset.change24h }));
       const total = values.reduce((sum, item) => sum + item.value, 0);
       return textResult({ total, concentration: values.map((item) => ({ ...item, weight: total ? item.value / total : 0 })), limitation: "Market-data coverage is provider-specific; this is research analytics, not investment advice." });
     });

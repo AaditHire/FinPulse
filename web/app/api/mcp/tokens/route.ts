@@ -24,6 +24,7 @@ export async function POST(request: Request) {
   try {
     const principal = await requireOwner();
     const body = CreateSchema.parse(await request.json());
+    if (principal.kind === "local") return Response.json({ error: "Sign in to create API keys." }, { status: 401 });
     const admin = createSupabaseAdminClient();
     if (!admin) return Response.json({ error: "Supabase is required for personal access tokens." }, { status: 503 });
     const token = `fp_${randomBytes(32).toString("base64url")}`;
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
     const expiresAt = new Date(Date.now() + body.expiresInDays * 86_400_000).toISOString();
     const { data, error } = await admin.from("mcp_tokens").insert({ owner_id: principal.ownerId, name: body.name, token_prefix: token.slice(0, 11), token_hash: tokenHash, scopes: body.scopes, expires_at: expiresAt }).select("id,name,token_prefix,scopes,expires_at,created_at").single();
     if (error) throw error;
-    return Response.json({ token, record: data }, { status: 201 });
+    return Response.json({ token, record: data }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof z.ZodError) return Response.json({ error: error.issues[0]?.message ?? "Invalid token request" }, { status: 400 });
     return authErrorResponse(error);
@@ -47,5 +48,8 @@ export async function DELETE(request: Request) {
     const { error } = await admin.from("mcp_tokens").update({ revoked_at: new Date().toISOString() }).eq("id", id).eq("owner_id", principal.ownerId);
     if (error) throw error;
     return Response.json({ revoked: true });
-  } catch (error) { return authErrorResponse(error); }
+  } catch (error) {
+    if (error instanceof z.ZodError) return Response.json({ error: "Invalid API key ID." }, { status: 400 });
+    return authErrorResponse(error);
+  }
 }

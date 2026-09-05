@@ -28,7 +28,7 @@ def test_semantic_dedupe_keeps_newest() -> None:
     items = [
         article("Bitcoin rallies after ETF flows", "https://example.com/new"),
         article("BTC rises as ETF inflows grow", "https://example.com/old", age_hours=2),
-        article("Ethereum developers announce upgrade", "https://example.com/eth", "ETH"),
+        article("Ethereum developers announce upgrade", "https://example.com/eth", "ETH", age_hours=1),
     ]
     def fake_embedder(titles: list[str]) -> np.ndarray:
         return np.array(

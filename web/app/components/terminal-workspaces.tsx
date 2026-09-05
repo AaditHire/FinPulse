@@ -1,4 +1,5 @@
 "use client";
+import { McpAccess } from "./mcp-access";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -210,20 +211,7 @@ function HealthWorkspace() {
 
 function formatBytes(bytes: number) { if (!bytes) return "0 MB"; return `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
 
-function AccessWorkspace() {
-  const [tokens, setTokens] = useState<TokenRecord[]>([]); const [revealed, setRevealed] = useState(""); const [error, setError] = useState(""); const [copied, setCopied] = useState(false);
-  const load = useCallback(async () => { try { const response = await fetch("/api/mcp/tokens", { cache: "no-store" }); const payload = await response.json() as { tokens?: TokenRecord[]; error?: string }; if (!response.ok) throw new Error(payload.error); setTokens(payload.tokens ?? []); } catch (caught) { setError(caught instanceof Error ? caught.message : "Access tokens unavailable"); } }, []);
-  useEffect(() => { void load(); }, [load]);
-  async function createToken() { setError(""); const response = await fetch("/api/mcp/tokens", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Terminal client", scopes: ["market:read", "research:read", "portfolio:read"], expiresInDays: 90 }) }); const payload = await response.json() as { token?: string; error?: string }; if (!response.ok || !payload.token) { setError(payload.error ?? "Token creation failed"); return; } setRevealed(payload.token); await load(); }
-  async function revoke(id: string) { await fetch(`/api/mcp/tokens?id=${encodeURIComponent(id)}`, { method: "DELETE" }); await load(); }
-  return <>
-    <div className="workspace-title"><div className="workspace-icon"><KeyRound size={22}/></div><div><p>MCP ACCESS</p><h2>Scoped terminal connections</h2><span>One Streamable HTTP endpoint · hashed personal tokens · least-privilege scopes</span></div></div>
-    <div className="terminal-columns access-layout"><article className="terminal-card"><div className="terminal-card-head"><span>Endpoint</span><b>STREAMABLE HTTP</b></div><code className="endpoint-code">{typeof window === "undefined" ? "/api/mcp" : `${window.location.origin}/api/mcp`}</code><div className="scope-chips"><span>market:read</span><span>research:read</span><span>portfolio:read</span><span>alerts:write</span></div><button className="terminal-primary" onClick={() => void createToken()}><Plus size={15}/> Create 90-day read token</button><ErrorNotice message={error}/></article>
-      <aside className="terminal-card"><div className="terminal-card-head"><span>Protocol boundary</span><b>RESEARCH ONLY</b></div><div className="policy-boundary"><ShieldCheck size={18}/><p><b>Scoped tools only</b><span>market_*, research_*, portfolio_* and approval-gated alerts. No order or brokerage tools exist.</span></p></div></aside></div>
-    {revealed ? <div className="token-reveal"><button aria-label="Dismiss token" onClick={() => setRevealed("")}><X size={14}/></button><b>Copy this token now. It will not be shown again.</b><code>{revealed}</code><button onClick={() => { void navigator.clipboard.writeText(revealed); setCopied(true); }}>{copied ? <Check size={14}/> : <Clipboard size={14}/>} {copied ? "Copied" : "Copy"}</button></div> : null}
-    <article className="terminal-card"><div className="terminal-card-head"><span>Personal access tokens</span><b>{tokens.filter((token) => !token.revoked_at).length} ACTIVE</b></div><div className="token-list">{tokens.map((token) => <div className={token.revoked_at ? "revoked" : ""} key={token.id}><KeyRound size={16}/><p><b>{token.name}</b><small>{token.token_prefix}… · expires {new Date(token.expires_at).toLocaleDateString()}</small></p><span>{token.scopes.join(" · ")}</span>{!token.revoked_at ? <button onClick={() => void revoke(token.id)}>Revoke</button> : <em>Revoked</em>}</div>)}{!tokens.length ? <div className="workspace-empty">No external client tokens.</div> : null}</div></article>
-  </>;
-}
+function AccessWorkspace() { return <McpAccess />; }
 
 export function CommandPalette({ open, close, navigate }: { open: boolean; close: () => void; navigate: (workspace: WorkspaceName) => void }) {
   const [query, setQuery] = useState("");
