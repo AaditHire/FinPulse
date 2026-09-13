@@ -1,13 +1,10 @@
 import { z } from "zod";
-import { authErrorResponse, requireOwner } from "@/lib/auth";
-import { fetchBeaDataset, fetchBlsSeries, fetchEcbSeries, fetchFredSeries, fetchWorldBankSeries } from "@/lib/sources/macro";
+import { fetchBlsSeries, fetchFredSeries, fetchWorldBankSeries } from "@/lib/sources/macro";
 
 const QuerySchema = z.discriminatedUnion("provider", [
-  z.object({ provider: z.literal("fred"), series: z.string().min(1).max(80) }),
-  z.object({ provider: z.literal("bls"), series: z.string().min(1).max(80) }),
-  z.object({ provider: z.literal("worldbank"), series: z.string().min(1).max(80), country: z.string().max(8).default("WLD") }),
-  z.object({ provider: z.literal("ecb"), flow: z.string().min(1).max(40), key: z.string().min(1).max(120) }),
-  z.object({ provider: z.literal("bea"), dataset: z.string().min(1).max(80), table: z.string().min(1).max(80) }),
+  z.object({ provider: z.literal("fred"), series: z.enum(["UNRATE", "FEDFUNDS"]) }),
+  z.object({ provider: z.literal("bls"), series: z.literal("CUUR0000SA0") }),
+  z.object({ provider: z.literal("worldbank"), series: z.literal("NY.GDP.MKTP.CD"), country: z.literal("WLD").default("WLD") }),
 ]);
 
 const BLS_FRED_FALLBACKS: Record<string, string> = {
@@ -27,17 +24,14 @@ async function fetchBlsWithFallback(series: string) {
 
 export async function GET(request: Request) {
   try {
-    await requireOwner();
     const url = new URL(request.url);
     const parsed = QuerySchema.parse(Object.fromEntries(url.searchParams));
     const result = parsed.provider === "fred" ? await fetchFredSeries(parsed.series)
       : parsed.provider === "bls" ? await fetchBlsWithFallback(parsed.series)
-      : parsed.provider === "worldbank" ? await fetchWorldBankSeries(parsed.series, parsed.country)
-      : parsed.provider === "ecb" ? await fetchEcbSeries(parsed.flow, parsed.key)
-      : await fetchBeaDataset(parsed.dataset, parsed.table);
+      : await fetchWorldBankSeries(parsed.series, parsed.country);
     return Response.json(result);
   } catch (error) {
     if (error instanceof z.ZodError) return Response.json({ error: "Invalid macro-series request", detail: error.issues }, { status: 400 });
-    return authErrorResponse(error);
+    return Response.json({ error: error instanceof Error ? error.message : "Macro provider failed" }, { status: 502 });
   }
 }
