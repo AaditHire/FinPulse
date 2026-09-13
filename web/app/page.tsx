@@ -3,7 +3,7 @@
 import {
   Activity, AlertCircle, Bell, Bot, ChartNoAxesCombined, Check, ChevronRight,
   CircleGauge, Clock3, ExternalLink, LayoutDashboard, LoaderCircle, Mail, Newspaper, Plus,
-  RefreshCw, Save, Search, Send, Settings2, Sparkles, Trash2, WalletCards, X,
+  RefreshCw, Save, Search, Send, Settings2, ShieldCheck, Sparkles, Trash2, WalletCards, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -362,6 +362,7 @@ type DigestSettings = { recipient: string; deliveryTime: string; timezone: strin
 
 function DigestSchedulePanel({ emailConnected }: { emailConnected: boolean }) {
   const [settings, setSettings] = useState<DigestSettings>({ recipient: "", deliveryTime: "08:00", timezone: "Asia/Kolkata", enabled: true });
+  const [ownerAccess, setOwnerAccess] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -372,7 +373,12 @@ function DigestSchedulePanel({ emailConnected }: { emailConnected: boolean }) {
     void fetch("/api/digest/settings", { cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json() as { settings?: DigestSettings; error?: string };
+        if (response.status === 401) {
+          setOwnerAccess(false);
+          return;
+        }
         if (!response.ok || !payload.settings) throw new Error(payload.error ?? "Could not load digest settings.");
+        setOwnerAccess(true);
         setSettings(payload.settings);
       })
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not load digest settings."))
@@ -406,15 +412,15 @@ function DigestSchedulePanel({ emailConnected }: { emailConnected: boolean }) {
     <div className="delivery-intro">
       <span className="delivery-icon"><Mail size={20}/></span>
       <div><p>EMAIL AUTOMATION</p><h3>Digest schedule</h3><span>Choose when FinPulse should deliver your AI-ranked market brief.</span></div>
-      <span className={`automation-badge ${settings.enabled ? "" : "paused"}`}><i/>{settings.enabled ? "ACTIVE" : "PAUSED"}</span>
+      <span className={`automation-badge ${ownerAccess === false || !settings.enabled ? "paused" : ""}`}><i/>{ownerAccess === false ? "PUBLIC PREVIEW" : settings.enabled ? "ACTIVE" : "PAUSED"}</span>
     </div>
     <div className="schedule-form" aria-busy={loading}>
-      <label className="email-field">Recipient email<input type="email" value={settings.recipient} onChange={(event) => setSettings((current) => ({ ...current, recipient: event.target.value }))} placeholder="you@gmail.com" disabled={loading}/></label>
-      <label>Daily delivery time<div className="input-with-icon"><Clock3 size={16}/><input type="time" value={settings.deliveryTime} onChange={(event) => setSettings((current) => ({ ...current, deliveryTime: event.target.value }))} disabled={loading}/></div></label>
-      <label>Timezone<select value={settings.timezone} onChange={(event) => setSettings((current) => ({ ...current, timezone: event.target.value }))} disabled={loading}><option value="Asia/Kolkata">India · IST</option><option value="UTC">UTC</option><option value="America/Los_Angeles">Pacific · PT</option><option value="America/New_York">Eastern · ET</option><option value="Europe/London">London · GMT/BST</option></select></label>
-      <div className="automation-control"><div><b>Automation active</b><span>{settings.enabled ? `Daily at ${settings.deliveryTime}` : "Daily emails are paused"}</span></div><button type="button" role="switch" aria-checked={settings.enabled} className={`toggle ${settings.enabled ? "on" : ""}`} onClick={() => setSettings((current) => ({ ...current, enabled: !current.enabled }))}><span/></button></div>
-      <div className="schedule-actions"><button className="test-email-button" onClick={() => void sendTest()} disabled={testing || saving || !emailConnected}>{testing ? <LoaderCircle className="spin" size={16}/> : <Send size={16}/>} {testing ? "Building & sending…" : "Send test email"}</button><button className="save-schedule-button" onClick={() => void saveSettings()} disabled={saving || testing}>{saving ? <LoaderCircle className="spin" size={16}/> : <Save size={16}/>} {saving ? "Saving…" : "Save configuration"}</button></div>
-      {!emailConnected ? <p className="schedule-hint"><AlertCircle size={14}/> Connect Gmail SMTP in the server environment before sending a test.</p> : null}
+      <label className="email-field">Recipient email<input type="email" value={settings.recipient} onChange={(event) => setSettings((current) => ({ ...current, recipient: event.target.value }))} placeholder={ownerAccess === false ? "Private owner setting" : "you@gmail.com"} disabled={loading || ownerAccess === false}/></label>
+      <label>Daily delivery time<div className="input-with-icon"><Clock3 size={16}/><input type="time" value={settings.deliveryTime} onChange={(event) => setSettings((current) => ({ ...current, deliveryTime: event.target.value }))} disabled={loading || ownerAccess === false}/></div></label>
+      <label>Timezone<select value={settings.timezone} onChange={(event) => setSettings((current) => ({ ...current, timezone: event.target.value }))} disabled={loading || ownerAccess === false}><option value="Asia/Kolkata">India · IST</option><option value="UTC">UTC</option><option value="America/Los_Angeles">Pacific · PT</option><option value="America/New_York">Eastern · ET</option><option value="Europe/London">London · GMT/BST</option></select></label>
+      <div className="automation-control"><div><b>{ownerAccess === false ? "Automation preview" : "Automation active"}</b><span>{ownerAccess === false ? "Owner controls are hidden from visitors" : settings.enabled ? `Daily at ${settings.deliveryTime}` : "Daily emails are paused"}</span></div><button type="button" role="switch" aria-checked={ownerAccess !== false && settings.enabled} className={`toggle ${ownerAccess !== false && settings.enabled ? "on" : ""}`} onClick={() => setSettings((current) => ({ ...current, enabled: !current.enabled }))} disabled={ownerAccess === false}><span/></button></div>
+      <div className="schedule-actions"><button className="test-email-button" onClick={() => void sendTest()} disabled={testing || saving || !emailConnected || ownerAccess === false}>{testing ? <LoaderCircle className="spin" size={16}/> : <Send size={16}/>} {testing ? "Building & sending…" : "Send test email"}</button><button className="save-schedule-button" onClick={() => void saveSettings()} disabled={saving || testing || ownerAccess === false}>{saving ? <LoaderCircle className="spin" size={16}/> : <Save size={16}/>} {saving ? "Saving…" : "Save configuration"}</button></div>
+      {ownerAccess === false ? <p className="schedule-hint"><ShieldCheck size={14}/> Automation settings are private in this public portfolio demo.</p> : !emailConnected ? <p className="schedule-hint"><AlertCircle size={14}/> Connect Gmail SMTP in the server environment before sending a test.</p> : null}
       {message ? <p className="schedule-success"><Check size={14}/>{message}</p> : null}
       {error ? <p className="form-error"><AlertCircle size={14}/>{error}</p> : null}
     </div>

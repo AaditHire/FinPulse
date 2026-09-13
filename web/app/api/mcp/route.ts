@@ -25,7 +25,7 @@ async function handle(request: Request) {
   try {
     validateRequestOrigin(request);
     const principal = await authenticateRequest(request);
-    if (principal.kind === "local") throw new AuthError("Sign in and create an MCP API key first.", 401);
+    if (principal.kind === "local") throw new AuthError("Create an owner API key before connecting an MCP client.", 401);
     const handler = createMcpHandler(() => createFinPulseMcpServer(principal));
     const response = await handler.fetch(request);
     response.headers.set("Cache-Control", "no-store");

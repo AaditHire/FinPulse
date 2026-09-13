@@ -32,7 +32,7 @@ export async function requireOwner(): Promise<AuthPrincipal> {
   }
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase!.auth.getUser();
-  if (error || !data.user) throw new AuthError("Sign in to continue.");
+  if (error || !data.user) throw new AuthError("Owner-only feature is unavailable in this public demo.");
   assertOwnerEmail(data.user.email);
   return {
     ownerId: data.user.id,

@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   try {
     const principal = await requireOwner();
     const body = CreateSchema.parse(await request.json());
-    if (principal.kind === "local") return Response.json({ error: "Sign in to create API keys." }, { status: 401 });
+    if (principal.kind === "local") return Response.json({ error: "Owner API-key storage is not configured." }, { status: 401 });
     const admin = createSupabaseAdminClient();
     if (!admin) return Response.json({ error: "Supabase is required for personal access tokens." }, { status: 503 });
     const token = `fp_${randomBytes(32).toString("base64url")}`;

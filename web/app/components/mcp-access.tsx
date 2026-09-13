@@ -26,11 +26,20 @@ export function McpAccess() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [ownerAccess, setOwnerAccess] = useState<boolean | null>(null);
   const [copied, setCopied] = useState("");
   const [endpoint, setEndpoint] = useState("/api/mcp");
   async function load() {
-    const payload = await api("/api/mcp/tokens");
-    if (!payload.configured) throw new Error("Connect Supabase and sign in before creating API keys.");
+    const response = await fetch("/api/mcp/tokens", { cache: "no-store" });
+    const payload = await response.json();
+    if (response.status === 401) {
+      setOwnerAccess(false);
+      setKeys([]);
+      return;
+    }
+    if (!response.ok) throw new Error(payload.error || "The request failed. Please try again.");
+    if (!payload.configured) throw new Error("Owner API-key storage is not configured.");
+    setOwnerAccess(true);
     setKeys(payload.tokens ?? []);
   }
   useEffect(() => {
@@ -62,14 +71,14 @@ export function McpAccess() {
     <div className="workspace-title"><div><p>MCP ACCESS</p><h2>Connect your AI tools to FinPulse</h2><span>Generate an API key here, then use it in a client that supports Streamable HTTP and bearer authentication.</span></div></div>
     {error ? <div className="terminal-notice error" role="alert">{error}</div> : null}
     <div className="terminal-columns access-layout">
-      <article className="terminal-card"><div className="terminal-card-head"><span>Create API key</span><b>OWNER ACCESS</b></div>
+      <article className="terminal-card"><div className="terminal-card-head"><span>Create API key</span><b>{ownerAccess === false ? "PUBLIC DEMO" : "OWNER ACCESS"}</b></div>
         <form className="access-form" onSubmit={e => { e.preventDefault(); void create(); }}>
           <div className="access-fields">
-            <label>Key name<input required minLength={2} maxLength={80} value={name} onChange={e => setName(e.target.value)} /></label>
-            <label>Expires in<select value={days} onChange={e => setDays(Number(e.target.value))}><option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option><option value={365}>1 year</option></select></label>
+            <label>Key name<input required minLength={2} maxLength={80} value={name} onChange={e => setName(e.target.value)} disabled={ownerAccess === false} /></label>
+            <label>Expires in<select value={days} onChange={e => setDays(Number(e.target.value))} disabled={ownerAccess === false}><option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option><option value={365}>1 year</option></select></label>
           </div>
-          <fieldset className="access-permissions"><legend>Permissions</legend><div className="permission-list">{permissions.map(([scope, description]) => <label className="permission-option" key={scope}><input type="checkbox" checked={scopes.includes(scope)} onChange={e => setScopes(current => e.target.checked ? [...current, scope] : current.filter(s => s !== scope))} /><span><b>{description}</b><small>{scope}</small></span></label>)}</div></fieldset>
-          <div className="access-actions"><span>{loading ? "Checking your existing keys…" : `${scopes.length} permission${scopes.length === 1 ? "" : "s"} selected`}</span><button className="terminal-primary" disabled={busy || loading || !scopes.length || name.trim().length < 2 || Boolean(token)}>{busy ? "Working…" : "Generate API key"}</button></div>
+          <fieldset className="access-permissions" disabled={ownerAccess === false}><legend>Permissions</legend><div className="permission-list">{permissions.map(([scope, description]) => <label className="permission-option" key={scope}><input type="checkbox" checked={scopes.includes(scope)} onChange={e => setScopes(current => e.target.checked ? [...current, scope] : current.filter(s => s !== scope))} /><span><b>{description}</b><small>{scope}</small></span></label>)}</div></fieldset>
+          <div className="access-actions"><span>{loading ? "Checking API access…" : ownerAccess === false ? "Key management is private in the public demo" : `${scopes.length} permission${scopes.length === 1 ? "" : "s"} selected`}</span><button className="terminal-primary" disabled={busy || loading || ownerAccess === false || !scopes.length || name.trim().length < 2 || Boolean(token)}>{busy ? "Working…" : "Generate API key"}</button></div>
         </form>
       </article>
       <article className="terminal-card"><div className="terminal-card-head"><span>Connect your client</span><b>STREAMABLE HTTP</b></div><div className="access-client">
@@ -82,7 +91,7 @@ export function McpAccess() {
     {token ? <div className="token-reveal" role="status"><b>Your API key is ready. Copy it now; it is shown only once.</b><code style={{ overflowWrap: "anywhere" }}>{token}</code><button onClick={() => void copy(token, "key")}>{copied === "key" ? "Copied API key" : "Copy API key"}</button><button onClick={() => { setToken(""); setCopied(""); }}>Done — hide key</button></div> : null}
     <article className="terminal-card"><div className="terminal-card-head"><span>Your API keys</span><b>{keys.filter(active).length} ACTIVE</b></div>
       <div className="token-list">{keys.map(key => <div key={key.id} className={`token-row ${active(key) ? "" : "revoked"}`}><p><b>{key.name}</b><small>{key.token_prefix}… · expires {new Date(key.expires_at).toLocaleDateString()} · {key.last_used_at ? "last used " + new Date(key.last_used_at).toLocaleString() : "never used"}</small></p><span>{key.scopes.join(" · ")}</span>{active(key) ? <button disabled={busy} onClick={() => void revoke(key.id)}>Revoke</button> : <em>{key.revoked_at ? "Revoked" : "Expired"}</em>}</div>)}
-        {!keys.length ? <div className="workspace-empty token-empty">{loading ? "Loading API keys…" : "No API keys yet. Create your first key above."}</div> : null}
+        {!keys.length ? <div className="workspace-empty token-empty">{loading ? "Loading API keys…" : ownerAccess === false ? "Private API keys are never shown to public visitors." : "No API keys yet. Create your first key above."}</div> : null}
       </div>
     </article>
   </>;
