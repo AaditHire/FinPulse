@@ -42,6 +42,7 @@ The workflow restores and saves the SQLite file through the GitHub Actions cache
 ## What it does
 
 - Values personal holdings from live market prices and renders both a portfolio graph and selectable 30-day graphs for every holding.
+- Adds a public Markets workspace with stock comparison rows, sparklines, multi-range security charts, performance ranges, reported financials, news, and one-click browser-local portfolio tracking.
 - Adds and validates arbitrary Yahoo Finance stock tickers plus BTC, ETH, SOL, XRP, BNB, ADA, DOGE, AVAX, LINK, DOT, LTC, BCH, and SUI.
 - Loads the public dashboard directly without a sign-in wall. Anonymous portfolio edits are browser-local, while Supabase-backed personal data and mutations remain private.
 - Exposes Monitor, Research, Macro, Alerts, Data Health, and MCP Access workspaces with a keyboard command palette.

@@ -26,6 +26,36 @@ export type MarketAsset = {
   provenance: DataProvenance;
 };
 
+export type MarketStats = {
+  currency: string;
+  exchange: string;
+  previousClose: number | null;
+  open: number | null;
+  dayLow: number | null;
+  dayHigh: number | null;
+  fiftyTwoWeekLow: number | null;
+  fiftyTwoWeekHigh: number | null;
+  volume: number | null;
+};
+
+export type FinancialPeriod = {
+  date: string;
+  revenue: number | null;
+  profit: number | null;
+  currency: string;
+};
+
+export type MarketExplorerAsset = MarketAsset & {
+  stats: MarketStats;
+  financials?: FinancialPeriod[];
+};
+
+export type MarketExplorerPayload = {
+  assets: MarketExplorerAsset[];
+  generatedAt: string;
+  warnings: string[];
+};
+
 export type NewsItem = {
   id: string;
   title: string;

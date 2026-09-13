@@ -3,14 +3,15 @@
 import {
   Activity, AlertCircle, Bell, Bot, ChartNoAxesCombined, Check, ChevronRight,
   CircleGauge, Clock3, ExternalLink, LayoutDashboard, LoaderCircle, Mail, Newspaper, Plus,
-  RefreshCw, Save, Search, Send, Settings2, ShieldCheck, Sparkles, Trash2, WalletCards, X,
+  RefreshCw, Save, Search, Send, Settings2, ShieldCheck, Sparkles, Trash2, TrendingUp, WalletCards, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import type { AgentAnalysis, DashboardPayload, Holding, MarketAsset, NewsItem } from "@/lib/types";
+import type { AgentAnalysis, DashboardPayload, Holding, MarketAsset, MarketExplorerAsset, NewsItem } from "@/lib/types";
 import { CommandPalette, TerminalWorkspace, type WorkspaceName } from "@/app/components/terminal-workspaces";
+import { MarketExplorer } from "@/app/components/market-explorer";
 
 const DEFAULT_HOLDINGS: Holding[] = [
   { symbol: "BTC", quantity: 0.08, kind: "crypto" },
@@ -90,6 +91,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     let restoredHoldings = DEFAULT_HOLDINGS;
+    const requestedWorkspace = new URLSearchParams(window.location.search).get("workspace");
+    if (["monitor", "markets", "research", "macro", "alerts", "health", "access"].includes(requestedWorkspace ?? "")) {
+      setWorkspace(requestedWorkspace as WorkspaceName);
+    }
     const stored = window.localStorage.getItem("finpulse-holdings");
     if (stored) try {
       const parsed = JSON.parse(stored) as Array<Partial<Holding>>;
@@ -239,6 +244,9 @@ export default function Dashboard() {
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   const openMonitorSection = (id: string) => { setWorkspace("monitor"); window.setTimeout(() => scrollTo(id), 0); };
+  const addExplorerAsset = useCallback((asset: MarketExplorerAsset) => setHoldings((current) => current.some((holding) => holding.symbol === asset.symbol)
+    ? current
+    : [...current, { symbol: asset.symbol, quantity: 1, kind: "stock" }]), []);
 
   return (
     <main className="app-shell">
@@ -247,6 +255,7 @@ export default function Dashboard() {
         <nav aria-label="Dashboard navigation">
           <button className={`nav-icon ${workspace === "monitor" ? "active" : ""}`} aria-label="Monitor" onClick={() => openMonitorSection("overview")}><LayoutDashboard size={19} /><span>Monitor</span></button>
           <button className="nav-icon" aria-label="Portfolio" onClick={() => setPortfolioOpen(true)}><WalletCards size={19} /><span>Portfolio</span></button>
+          <button className={`nav-icon ${workspace === "markets" ? "active" : ""}`} aria-label="Explore markets" onClick={() => setWorkspace("markets")}><TrendingUp size={19}/><span>Markets</span></button>
           <button className={`nav-icon ${workspace === "research" ? "active" : ""}`} aria-label="Research" onClick={() => setWorkspace("research")}><Bot size={19} /><span>Research</span></button>
           <button className={`nav-icon ${workspace === "macro" ? "active" : ""}`} aria-label="Macro" onClick={() => setWorkspace("macro")}><Activity size={19} /><span>Macro</span></button>
           <button className={`nav-icon ${workspace === "alerts" ? "active" : ""}`} aria-label="Alerts" onClick={() => setWorkspace("alerts")}><Bell size={19} /><span>Alerts</span></button>
@@ -348,7 +357,7 @@ export default function Dashboard() {
             <span><i className={integrations.email ? "ready" : ""}/>Email delivery</span>
             <ChevronRight size={18}/>
           </button>
-        </section></> : <TerminalWorkspace workspace={workspace} holdings={holdings} groqKey={groqKey} navigate={setWorkspace}/>}
+        </section></> : workspace === "markets" ? <MarketExplorer holdings={holdings} onAdd={addExplorerAsset}/> : <TerminalWorkspace workspace={workspace} holdings={holdings} groqKey={groqKey} navigate={setWorkspace}/>}
       </section>
 
       {portfolioOpen ? <PortfolioModal holdings={holdings} setHoldings={setHoldings} symbol={draftSymbol} quantity={draftQuantity} kind={draftKind} setKind={setDraftKind} setSymbol={setDraftSymbol} setQuantity={setDraftQuantity} add={addHolding} addError={addError} adding={addingHolding} close={() => setPortfolioOpen(false)} /> : null}

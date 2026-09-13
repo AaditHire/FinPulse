@@ -10,10 +10,10 @@ import {
 import { sortObservationsNewestFirst } from "@/lib/macro/observations";
 import type { Citation, Holding, ResearchAnswer } from "@/lib/types";
 
-export type WorkspaceName = "monitor" | "research" | "macro" | "alerts" | "health" | "access";
+export type WorkspaceName = "monitor" | "markets" | "research" | "macro" | "alerts" | "health" | "access";
 
 type Props = {
-  workspace: Exclude<WorkspaceName, "monitor">;
+  workspace: Exclude<WorkspaceName, "monitor" | "markets">;
   holdings: Holding[];
   groqKey: string;
   navigate: (workspace: WorkspaceName) => void;
@@ -216,7 +216,7 @@ function AccessWorkspace() { return <McpAccess />; }
 export function CommandPalette({ open, close, navigate }: { open: boolean; close: () => void; navigate: (workspace: WorkspaceName) => void }) {
   const [query, setQuery] = useState("");
   const commands = [
-    ["Monitor", "Portfolio, quotes, graphs, news and digest", "monitor"], ["Research", "Cited RAG and LLM agent", "research"],
+    ["Monitor", "Portfolio, quotes, graphs, news and digest", "monitor"], ["Markets", "Discover stocks and open security details", "markets"], ["Research", "Cited RAG and LLM agent", "research"],
     ["Macro", "Official economic series", "macro"], ["Alerts", "Approval-gated monitoring", "alerts"],
     ["Data Health", "Providers, quota and storage", "health"], ["MCP Access", "Scoped client tokens", "access"],
   ] as const;

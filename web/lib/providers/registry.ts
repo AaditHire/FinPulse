@@ -4,7 +4,7 @@ export type ProviderSpec = { id: string; label: string; hosts: string[]; rateLim
 
 export const PROVIDERS: ProviderSpec[] = [
   { id: "coingecko", label: "CoinGecko", hosts: ["api.coingecko.com"], rateLimit: "configuration-driven public API", cacheTtlSeconds: 60, fallback: "Yahoo crypto chart", coverage: "aggregated crypto markets" },
-  { id: "yahoo", label: "Yahoo Finance", hosts: ["query1.finance.yahoo.com"], rateLimit: "best effort / unofficial", cacheTtlSeconds: 60, fallback: "none", coverage: "unofficial consolidated-style chart" },
+  { id: "yahoo", label: "Yahoo Finance", hosts: ["query1.finance.yahoo.com", "query2.finance.yahoo.com"], rateLimit: "best effort / unofficial", cacheTtlSeconds: 60, fallback: "none", coverage: "unofficial consolidated-style chart and fundamentals" },
   { id: "alpaca", label: "Alpaca Basic", hosts: ["data.alpaca.markets"], rateLimit: "account plan", cacheTtlSeconds: 5, fallback: "Yahoo Finance", coverage: "live IEX single-exchange" },
   { id: "sec", label: "SEC EDGAR", hosts: ["www.sec.gov", "data.sec.gov"], rateLimit: "10 requests/second maximum", cacheTtlSeconds: 3600, fallback: "none; authoritative filings source", coverage: "US issuer submissions and archives" },
   { id: "fred", label: "FRED", hosts: ["api.stlouisfed.org"], rateLimit: "API-key policy", cacheTtlSeconds: 21600, fallback: "official alternate series", coverage: "US macro series" },

@@ -2,7 +2,7 @@ import { XMLParser } from "fast-xml-parser";
 import "server-only";
 
 import { createHash } from "node:crypto";
-import type { DashboardPayload, DataProvenance, MarketAsset, NewsItem, ProviderHealth } from "./types";
+import type { DashboardPayload, DataProvenance, FinancialPeriod, MarketAsset, MarketExplorerAsset, MarketExplorerPayload, NewsItem, ProviderHealth } from "./types";
 import { assertAllowedProviderUrl } from "./providers/registry";
 
 const CRYPTO: Record<string, { id: string; name: string }> = {
@@ -149,7 +149,7 @@ async function fetchAlpacaStockAsset(symbol: string): Promise<MarketAsset> {
 async function fetchYahooStockAsset(symbol: string): Promise<MarketAsset> {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1mo&interval=1d&includePrePost=false`;
   const payload = await (await fetchWithTimeout(url)).json() as {
-    chart: { result: Array<{ timestamp: number[]; meta: { regularMarketPrice?: number; chartPreviousClose?: number; shortName?: string }; indicators: { quote: Array<{ close: Array<number | null> }> } }> | null; error: unknown };
+    chart: { result: Array<{ timestamp: number[]; meta: { regularMarketPrice?: number; regularMarketChangePercent?: number; shortName?: string }; indicators: { quote: Array<{ close: Array<number | null> }> } }> | null; error: unknown };
   };
   const result = payload.chart.result?.[0];
   if (!result) throw new Error(`No quote data for ${symbol}`);
@@ -158,13 +158,14 @@ async function fetchYahooStockAsset(symbol: string): Promise<MarketAsset> {
     return value == null ? [] : [{ date: new Date(timestamp * 1000).toISOString(), value: Number(value) }];
   });
   const price = Number(result.meta.regularMarketPrice ?? history.at(-1)?.value ?? 0);
-  const previous = Number(result.meta.chartPreviousClose ?? history.at(-2)?.value ?? price);
+  const previous = Number(history.at(-2)?.value ?? price);
+  const reportedChange = Number(result.meta.regularMarketChangePercent);
   return {
     symbol,
     name: result.meta.shortName || STOCK_NAMES[symbol] || symbol,
     kind: "stock",
     price,
-    change24h: previous ? ((price - previous) / previous) * 100 : 0,
+    change24h: Number.isFinite(reportedChange) ? reportedChange : previous ? ((price - previous) / previous) * 100 : 0,
     history,
     provenance: provenance({
       provider: "Yahoo Finance",
@@ -176,6 +177,117 @@ async function fetchYahooStockAsset(symbol: string): Promise<MarketAsset> {
       disclaimer: "Best-effort unofficial data with no service-level guarantee.",
     }),
   };
+}
+
+const EXPLORER_RANGES = {
+  "5d": "15m", "1mo": "1d", "3mo": "1d", "6mo": "1d", "1y": "1d", "5y": "1wk",
+} as const;
+
+export type ExplorerRange = keyof typeof EXPLORER_RANGES;
+
+function optionalNumber(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+async function fetchYahooExplorerAsset(symbol: string, range: ExplorerRange): Promise<MarketExplorerAsset> {
+  const interval = EXPLORER_RANGES[range];
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
+  const payload = await (await fetchWithTimeout(url)).json() as {
+    chart: { result: Array<{
+      timestamp: number[];
+      meta: {
+        regularMarketPrice?: number; regularMarketChangePercent?: number; shortName?: string; longName?: string;
+        currency?: string; fullExchangeName?: string; exchangeName?: string; regularMarketDayLow?: number;
+        regularMarketDayHigh?: number; fiftyTwoWeekLow?: number; fiftyTwoWeekHigh?: number; regularMarketVolume?: number;
+      };
+      indicators: { quote: Array<{ close: Array<number | null>; open?: Array<number | null> }> };
+    }> | null; error: unknown };
+  };
+  const result = payload.chart.result?.[0];
+  if (!result) throw new Error(`No quote data for ${symbol}`);
+  const quote = result.indicators.quote[0];
+  const history = result.timestamp.flatMap((timestamp, index) => {
+    const value = quote?.close[index];
+    return value == null ? [] : [{ date: new Date(timestamp * 1000).toISOString(), value: Number(value) }];
+  });
+  const price = Number(result.meta.regularMarketPrice ?? history.at(-1)?.value ?? 0);
+  const previousClose = history.length > 1 ? history.at(-2)?.value ?? null : null;
+  const reportedChange = Number(result.meta.regularMarketChangePercent);
+  const change24h = Number.isFinite(reportedChange)
+    ? reportedChange
+    : previousClose ? ((price - previousClose) / previousClose) * 100 : 0;
+  const opens = quote?.open?.filter((value): value is number => value != null && Number.isFinite(value)) ?? [];
+  return {
+    symbol,
+    name: result.meta.longName || result.meta.shortName || STOCK_NAMES[symbol] || symbol,
+    kind: "stock",
+    price,
+    change24h,
+    history,
+    stats: {
+      currency: result.meta.currency || "USD",
+      exchange: result.meta.fullExchangeName || result.meta.exchangeName || "US market",
+      previousClose,
+      open: optionalNumber(opens.at(-1)),
+      dayLow: optionalNumber(result.meta.regularMarketDayLow),
+      dayHigh: optionalNumber(result.meta.regularMarketDayHigh),
+      fiftyTwoWeekLow: optionalNumber(result.meta.fiftyTwoWeekLow),
+      fiftyTwoWeekHigh: optionalNumber(result.meta.fiftyTwoWeekHigh),
+      volume: optionalNumber(result.meta.regularMarketVolume),
+    },
+    provenance: provenance({
+      provider: "Yahoo Finance",
+      sourceUrl: url,
+      asOf: history.at(-1)?.date ?? new Date().toISOString(),
+      freshness: "best-effort",
+      exchangeCoverage: "Unspecified consolidated source",
+      isDelayed: true,
+      disclaimer: "Best-effort unofficial data with no service-level guarantee.",
+    }),
+  };
+}
+
+async function fetchYahooFinancials(symbol: string): Promise<FinancialPeriod[]> {
+  const period2 = Math.floor(Date.now() / 1000);
+  const period1 = period2 - 4 * 365 * 86_400;
+  const url = `https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}?symbol=${encodeURIComponent(symbol)}&type=quarterlyTotalRevenue,quarterlyNetIncome&period1=${period1}&period2=${period2}`;
+  const payload = await (await fetchWithTimeout(url)).json() as {
+    timeseries?: { result?: Array<Record<string, unknown>> };
+  };
+  const results = payload.timeseries?.result ?? [];
+  const byDate = new Map<string, FinancialPeriod>();
+  for (const result of results) {
+    for (const key of ["quarterlyTotalRevenue", "quarterlyNetIncome"] as const) {
+      const values = Array.isArray(result[key]) ? result[key] as Array<{ asOfDate?: string; currencyCode?: string; reportedValue?: { raw?: number } }> : [];
+      for (const value of values) {
+        if (!value.asOfDate) continue;
+        const current = byDate.get(value.asOfDate) ?? { date: value.asOfDate, revenue: null, profit: null, currency: value.currencyCode || "USD" };
+        if (key === "quarterlyTotalRevenue") current.revenue = optionalNumber(value.reportedValue?.raw);
+        else current.profit = optionalNumber(value.reportedValue?.raw);
+        byDate.set(value.asOfDate, current);
+      }
+    }
+  }
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-8);
+}
+
+export async function buildMarketExplorerData(input: unknown, range: ExplorerRange = "1mo", includeFinancials = false): Promise<MarketExplorerPayload> {
+  const symbols = sanitizeSymbols(input).slice(0, 12);
+  const requested = symbols.length ? symbols : ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "AMD"];
+  const settled = await Promise.allSettled(requested.map((symbol) => fetchYahooExplorerAsset(symbol, range)));
+  const warnings: string[] = [];
+  const assets = settled.flatMap((result, index) => {
+    if (result.status === "fulfilled") return [result.value];
+    warnings.push(`${requested[index]} quote unavailable`);
+    return [];
+  });
+  if (includeFinancials && assets[0]) {
+    try { assets[0].financials = await fetchYahooFinancials(assets[0].symbol); }
+    catch { warnings.push(`${assets[0].symbol} financial history unavailable`); }
+  }
+  return { assets, generatedAt: new Date().toISOString(), warnings };
 }
 
 async function fetchStockAsset(symbol: string): Promise<MarketAsset> {
