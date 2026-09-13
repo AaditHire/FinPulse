@@ -26,10 +26,22 @@ jobs:
           set -euo pipefail
           test -n "$APP_URL"
           test -n "$INTERNAL_API_SECRET"
-          payload="${WATCHLIST_JSON:-[{\"symbol\":\"BTC\",\"kind\":\"crypto\"},{\"symbol\":\"AAPL\",\"kind\":\"stock\"}]}"
+          request_body="$(python - <<'PY'
+          import json
+          import os
+
+          fallback = [
+              {"symbol": "BTC", "kind": "crypto"},
+              {"symbol": "AAPL", "kind": "stock"},
+          ]
+          raw = os.environ.get("WATCHLIST_JSON", "").strip()
+          assets = json.loads(raw) if raw else fallback
+          print(json.dumps({"kind": "market", "assets": assets}, separators=(",", ":")))
+          PY
+          )"
           curl --fail-with-body --retry 2 --retry-delay 10 \
             --request POST \
             --header "Authorization: Bearer $INTERNAL_API_SECRET" \
             --header "Content-Type: application/json" \
-            --data "{\"kind\":\"market\",\"assets\":$payload}" \
+            --data "$request_body" \
             "$APP_URL/api/internal/ingest/run"
