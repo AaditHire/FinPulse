@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { authErrorResponse, requireOwner } from "@/lib/auth";
 import { runResearchAgent } from "@/lib/agents/runtime";
+import { ANONYMOUS_OWNER_ID, anonymousRateLimit } from "@/lib/anonymous-access";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -12,13 +12,14 @@ const Schema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const principal = await requireOwner();
+    const limited = anonymousRateLimit(request);
+    if (limited) return limited;
     const apiKey = request.headers.get("x-groq-api-key")?.trim() || process.env.GROQ_API_KEY;
     if (!apiKey) return Response.json({ error: "Connect Groq or configure GROQ_API_KEY." }, { status: 503 });
     const body = Schema.parse(await request.json());
-    return Response.json(await runResearchAgent({ ownerId: principal.ownerId, query: body.query, holdings: body.holdings, apiKey }));
+    return Response.json(await runResearchAgent({ ownerId: ANONYMOUS_OWNER_ID, query: body.query, holdings: body.holdings, apiKey, includePrivateResearch: false }));
   } catch (error) {
     if (error instanceof z.ZodError) return Response.json({ error: error.issues[0]?.message ?? "Invalid research request" }, { status: 400 });
-    return authErrorResponse(error);
+    return Response.json({ error: error instanceof Error ? error.message : "Research run failed" }, { status: 502 });
   }
 }

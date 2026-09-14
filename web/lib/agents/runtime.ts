@@ -60,7 +60,7 @@ async function persistRun(ownerId: string, runId: string, values: Record<string,
   await admin.from("research_runs").upsert({ id: runId, owner_id: ownerId, ...values }, { onConflict: "id" });
 }
 
-export async function runResearchAgent(input: { ownerId: string; query: string; holdings: Holding[]; apiKey: string; workload?: "interactive" | "scheduled" }): Promise<ResearchAnswer & { confidence: number }> {
+export async function runResearchAgent(input: { ownerId: string; query: string; holdings: Holding[]; apiKey: string; workload?: "interactive" | "scheduled"; includePrivateResearch?: boolean }): Promise<ResearchAnswer & { confidence: number }> {
   const startedAt = Date.now();
   const runId = randomUUID();
   const workload = input.workload ?? "interactive";
@@ -85,7 +85,7 @@ export async function runResearchAgent(input: { ownerId: string; query: string; 
 
   const [dashboard, ragCitations] = await Promise.all([
     buildDashboardData(input.holdings),
-    searchDocuments(input.ownerId, researchQuery, 6).catch(() => []),
+    input.includePrivateResearch === false ? Promise.resolve([]) : searchDocuments(input.ownerId, researchQuery, 6).catch(() => []),
   ]);
   const toolCalls = [
     { name: "market_dashboard", status: "completed", assets: dashboard.assets.length, providers: dashboard.providerHealth },
