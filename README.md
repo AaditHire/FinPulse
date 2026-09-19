@@ -31,13 +31,13 @@ flowchart LR
     N <--> S[(Supabase + RLS + Storage)]
     X[Scoped MCP clients] --> N
     A[GitHub Actions<br/>ingest, alerts, digest, keepalive] --> N
-    A --> P[Python digest pipeline]
-    P --> G
-    P --> H[(SQLite sent history)]
-    P --> M[Gmail HTML digest]
+    A --> D[Protected TypeScript digest endpoint]
+    D --> G
+    D --> S
+    D --> M[Gmail research digest]
 ```
 
-The workflow restores and saves the SQLite file through the GitHub Actions cache. Without that step, a fresh runner would forget previously delivered links on every run.
+Supabase stores the approved delivery preference and a unique daily delivery claim, preventing duplicate messages when the scheduler polls more than once.
 
 ## What it does
 
@@ -106,10 +106,10 @@ Add these repository secrets in **Settings → Secrets and variables → Actions
 | `INTERNAL_API_SECRET` | Ingestion | Authorizes the terminal ingestion endpoint |
 | `CRON_SECRET` | Alerts / digest | Authorizes scheduled alert evaluation and the TypeScript digest |
 | `KEEPALIVE_SECRET` | Keepalive | Authorizes the database health check |
-| `GROQ_API_KEY` | Python digest | Groq summarization |
+| `GROQ_API_KEY` | Legacy manual digest | Groq summarization |
 | `SMTP_USER` | Email workflows | Gmail sender address |
 | `SMTP_PASS` | Email workflows | Gmail app password |
-| `EMAIL_TO` | Python digest | Digest recipient and recovery notification address |
+| `EMAIL_TO` | Legacy manual digest | Digest recipient and recovery notification address |
 | `CRYPTOPANIC_KEY` | No | Reserved optional news-source key |
 
 Optional repository variables:

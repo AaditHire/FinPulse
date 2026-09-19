@@ -407,7 +407,7 @@ function DigestSchedulePanel({ emailConnected }: { emailConnected: boolean }) {
       const payload = await response.json() as { settings?: DigestSettings; error?: string };
       if (!response.ok || !payload.settings) throw new Error(payload.error ?? "Could not save the schedule.");
       setSettings(payload.settings);
-      setMessage("Schedule saved. The Python digest will use this recipient.");
+      setMessage("Schedule saved for daily delivery.");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not save the schedule."); }
     finally { setSaving(false); }
   }
