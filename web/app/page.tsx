@@ -304,7 +304,13 @@ export default function Dashboard() {
                   <XAxis dataKey="day" axisLine={false} tickLine={false} minTickGap={35} tick={{ fill: "#5c6981", fontSize: 10 }} dy={10} />
                   <YAxis hide domain={["dataMin - 100", "dataMax + 100"]} />
                   <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #cfd8e7", borderRadius: 2, boxShadow: "0 10px 30px rgba(20,45,90,.10)", color: "#071633" }} labelStyle={{ color: "#5c6981" }} formatter={(value) => [money(Number(value)), selectedAsset?.symbol ?? "Portfolio"]} />
-                  <Area isAnimationActive={false} type="monotone" dataKey="value" stroke="#075cff" strokeWidth={2.4} fill="#dbe7ff" fillOpacity={0.72} />
+                  <defs>
+                    <linearGradient id="portfolioAreaFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#7550d8" stopOpacity={0.24} />
+                      <stop offset="100%" stopColor="#7550d8" stopOpacity={0.025} />
+                    </linearGradient>
+                  </defs>
+                  <Area isAnimationActive={false} type="monotone" dataKey="value" stroke="#6644c7" strokeWidth={2.4} fill="url(#portfolioAreaFill)" fillOpacity={1} />
                 </AreaChart>
               </ResponsiveContainer> : <EmptyChart loading={loading} />}
             </div>

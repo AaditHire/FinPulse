@@ -58,6 +58,37 @@
 .access-client{display:grid;gap:18px;padding:20px}
 .access-intro,.access-note{margin:0;color:var(--muted);font-size:10px;line-height:1.6}
 .access-intro code{padding:2px 5px;background:var(--blue-soft);color:var(--blue);font-family:"DM Mono",monospace;font-size:8px}
+
+/* Restored monitor depth and gradient treatment */
+.app-shell{background:
+  radial-gradient(circle at 78% 7%,rgba(255,222,209,.34),transparent 26%),
+  radial-gradient(circle at 24% 24%,rgba(220,214,255,.44),transparent 32%),
+  #f5f6fb}
+.sidebar{background:rgba(255,255,255,.9);box-shadow:10px 0 35px rgba(40,35,87,.035);backdrop-filter:blur(18px)}
+.workspace{background:transparent}
+.topbar{background:rgba(251,251,254,.88)}
+.status-row{background:rgba(251,251,254,.62)}
+.dashboard-grid{gap:18px;padding:18px 30px 30px;background:
+  radial-gradient(circle at 58% 5%,rgba(255,223,211,.2),transparent 28%),
+  radial-gradient(circle at 20% 20%,rgba(221,216,255,.26),transparent 34%),
+  transparent}
+.glass-card{border:1px solid rgba(205,211,226,.82);border-radius:20px;box-shadow:0 18px 42px rgba(35,39,74,.075);overflow:hidden}
+.portfolio-panel{border:1px solid rgba(205,211,226,.82);background:
+  radial-gradient(circle at 91% 9%,rgba(255,216,199,.64),transparent 34%),
+  radial-gradient(circle at 7% 91%,rgba(218,211,255,.66),transparent 43%),
+  linear-gradient(138deg,#fbfaff 0%,#f8f5ff 55%,#fff7f3 100%)}
+.snapshot-panel{border:1px solid rgba(205,211,226,.82);background:rgba(255,255,255,.93)}
+.ai-panel{border:1px solid rgba(205,211,226,.82);background:
+  radial-gradient(circle at 88% 0,rgba(255,224,211,.32),transparent 31%),
+  linear-gradient(118deg,rgba(244,240,255,.94),rgba(255,255,255,.96) 55%,rgba(255,248,244,.9))}
+.lower-grid{gap:18px;border-bottom:0}
+.news-panel,.delivery-panel{border:1px solid rgba(205,211,226,.82);border-radius:20px;background:rgba(255,255,255,.93);box-shadow:0 18px 42px rgba(35,39,74,.06);overflow:hidden}
+.integration-strip{border:1px solid rgba(205,211,226,.82);border-radius:16px;background:rgba(255,255,255,.9);box-shadow:0 12px 30px rgba(35,39,74,.055)}
+.chart-switcher button.active{color:#6644c7}.chart-switcher button.active::after{background:#6644c7}
+.allocation-bar span,.violet-dot{background:#7550d8}
+
+@media(max-width:1100px){.dashboard-grid{padding:16px 20px 24px}}
+@media(max-width:780px){.dashboard-grid{gap:12px;padding:12px 14px 90px}.glass-card,.news-panel,.delivery-panel{border-radius:16px}.lower-grid{gap:12px}}
 .access-copy-block{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
 .access-copy-block>span{grid-column:1/-1;color:var(--ink);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
 .access-copy-block .endpoint-code,.access-code{min-width:0;max-width:100%;margin:0;padding:12px;border:1px solid var(--line);background:#f8faff;color:var(--blue);font-family:"DM Mono",monospace;font-size:8px;line-height:1.55;overflow:auto}
