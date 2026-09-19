@@ -1,40 +1,37 @@
-import { access } from "node:fs/promises";
-import path from "node:path";
-import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
+import { requireOwner, authErrorResponse } from "@/lib/auth";
+import { buildAndSendResearchDigest } from "@/lib/digest";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
-
-async function pythonCommand(): Promise<{ command: string; args: string[] }> {
-  const candidates = [
-    process.env.PYTHON_EXECUTABLE,
-    path.resolve(process.cwd(), "..", ".venv", "Scripts", "python.exe"),
-    process.env.USERPROFILE ? path.join(process.env.USERPROFILE, ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe") : undefined,
-  ].filter((value): value is string => Boolean(value));
-  for (const command of candidates) {
-    try { await access(command); return { command, args: [] }; } catch { /* Try the next runtime. */ }
-  }
-  return process.platform === "win32" ? { command: "py", args: ["-3.11"] } : { command: "python3", args: [] };
-}
+export const maxDuration = 60;
 
 export async function POST() {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS || !process.env.GROQ_API_KEY) {
-    return NextResponse.json({ error: "Email and Groq server credentials must be connected first." }, { status: 400 });
+  try {
+    const principal = await requireOwner();
+    const apiKey = process.env.GROQ_API_KEY;
+    const admin = createSupabaseAdminClient();
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS || !apiKey || !admin) {
+      return NextResponse.json({ error: "Email, Groq, and Supabase server credentials must be connected first." }, { status: 400 });
+    }
+    const { data: preference, error } = await admin
+      .from("notification_preferences")
+      .select("recipient")
+      .eq("owner_id", principal.ownerId)
+      .maybeSingle();
+    if (error) throw error;
+    const recipient = preference?.recipient ?? process.env.EMAIL_TO;
+    if (!recipient) return NextResponse.json({ error: "Save a recipient email address first." }, { status: 400 });
+
+    console.log("[api/digest/test] building digest", { ownerId: principal.ownerId });
+    const result = await buildAndSendResearchDigest({ ownerId: principal.ownerId, recipient, apiKey });
+    console.log("[api/digest/test] sent", { ownerId: principal.ownerId, runId: result.runId, citations: result.citations });
+    return NextResponse.json({ sent: true, articleCount: result.citations });
+  } catch (error) {
+    console.error("[api/digest/test] failed", { error: error instanceof Error ? error.message : "Test digest failed" });
+    const authResponse = authErrorResponse(error);
+    if (authResponse.status !== 500) return authResponse;
+    const message = error instanceof Error ? error.message : "Test digest failed.";
+    return NextResponse.json({ error: message.replace(/gsk_[A-Za-z0-9_-]+/g, "[hidden]") }, { status: 502 });
   }
-  const runtime = await pythonCommand();
-  const root = path.resolve(process.cwd(), "..");
-  const result = await new Promise<{ code: number | null; output: string }>((resolve) => {
-    const child = spawn(/* turbopackIgnore: true */ runtime.command, [...runtime.args, "-m", "agent.main", "--test"], { cwd: root, env: process.env, windowsHide: true });
-    let output = "";
-    child.stdout.on("data", (chunk) => { output += String(chunk); });
-    child.stderr.on("data", (chunk) => { output += String(chunk); });
-    child.on("error", (error) => resolve({ code: -1, output: error.message }));
-    child.on("close", (code) => resolve({ code, output }));
-  });
-  if (result.code !== 0) {
-    const safeMessage = result.output.split(/\r?\n/).filter(Boolean).at(-1) ?? "The test digest failed.";
-    return NextResponse.json({ error: safeMessage.replace(/gsk_[A-Za-z0-9_-]+/g, "[hidden]") }, { status: 500 });
-  }
-  const count = Number(result.output.match(/Digest sent with (\d+) articles/)?.[1] ?? 0);
-  return NextResponse.json({ sent: true, articleCount: count });
 }

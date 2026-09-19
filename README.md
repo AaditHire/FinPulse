@@ -1,7 +1,7 @@
 # FinPulse
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-Open_FinPulse-2f65f5?logo=vercel&logoColor=white)](https://web-sand-pi-45.vercel.app/)
-[![FinPulse Daily Digest](https://github.com/AaditHire/FinPulse/actions/workflows/run-digest.yml/badge.svg)](https://github.com/AaditHire/FinPulse/actions/workflows/run-digest.yml)
+[![FinPulse Daily Digest](https://github.com/AaditHire/FinPulse/actions/workflows/typescript-digest.yml/badge.svg)](https://github.com/AaditHire/FinPulse/actions/workflows/typescript-digest.yml)
 [![Terminal Ingestion](https://github.com/AaditHire/FinPulse/actions/workflows/ingest-terminal.yml/badge.svg)](https://github.com/AaditHire/FinPulse/actions/workflows/ingest-terminal.yml)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
@@ -104,7 +104,7 @@ Add these repository secrets in **Settings → Secrets and variables → Actions
 |---|---:|---|
 | `FINPULSE_APP_URL` | Hosted jobs | Production base URL, such as `https://web-sand-pi-45.vercel.app` |
 | `INTERNAL_API_SECRET` | Ingestion | Authorizes the terminal ingestion endpoint |
-| `CRON_SECRET` | Alerts / TS digest | Authorizes scheduled alert evaluation and the optional TypeScript digest |
+| `CRON_SECRET` | Alerts / digest | Authorizes scheduled alert evaluation and the TypeScript digest |
 | `KEEPALIVE_SECRET` | Keepalive | Authorizes the database health check |
 | `GROQ_API_KEY` | Python digest | Groq summarization |
 | `SMTP_USER` | Email workflows | Gmail sender address |
@@ -117,17 +117,16 @@ Optional repository variables:
 | Variable | Purpose |
 |---|---|
 | `FINPULSE_WATCHLIST_JSON` | Overrides the default ingestion watchlist |
-| `ENABLE_TS_DIGEST_SCHEDULER` | Set to `true` to enable the TypeScript digest job |
 
 | Workflow | Cadence | Purpose |
 |---|---|---|
-| `run-digest.yml` | Every 30 minutes | Runs the Python digest, which sends only inside its configured delivery window |
+| `run-digest.yml` | Manual only | Legacy Python digest retained for local/manual compatibility |
 | `ingest-terminal.yml` | Every 2 hours | Refreshes normalized prices, bars, and news |
 | `evaluate-alerts.yml` | Every 15 minutes | Evaluates approved alert rules |
 | `supabase-keepalive.yml` | Daily | Checks database availability and sends recovery notifications |
-| `typescript-digest.yml` | Every 30 minutes when enabled | Calls the protected Next.js digest endpoint |
+| `typescript-digest.yml` | Every 30 minutes | Calls the protected Next.js endpoint, which sends once inside the configured local-time window |
 
-All workflows can also be started manually from the Actions tab. The Python digest stores its delivery window in `agent/digest_schedule.json` and restores its SQLite sent-history cache between runs.
+All workflows can also be started manually from the Actions tab. Production digest preferences and delivery deduplication are stored in Supabase; Vercel does not write schedule files or launch Python processes.
 
 ## Personal dashboard
 
@@ -152,10 +151,10 @@ In the public deployment, the **Digest schedule** card is a preview and its cont
 
 - choose the recipient email, local delivery time, and timezone;
 - pause or resume scheduled delivery;
-- save the schedule for the Python/GitHub Actions agent; and
+- save the schedule in Supabase for the TypeScript/GitHub Actions job; and
 - send a fresh test digest without changing the sent-article history.
 
-Recipient details are stored under the ignored `data/` directory. The tracked schedule contains only time, timezone, and enabled state.
+Production recipient details and schedules are stored in Supabase. Local compatibility mode can still use the ignored `data/` directory.
 
 For Vercel, set **Root Directory** to `web` and add the same server-side secrets in the Vercel project environment. No secret should use a `NEXT_PUBLIC_` prefix.
 

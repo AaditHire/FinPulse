@@ -1,9 +1,6 @@
 name: FinPulse Daily Digest
 
 on:
-  schedule:
-    # Poll twice hourly; the agent sends only in the configured timezone window.
-    - cron: "0,30 * * * *"
   workflow_dispatch:
 
 permissions:
